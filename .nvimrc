@@ -1,4 +1,4 @@
-nnoremap <leader>b :!cmake --build ./build/<CR>
+nnoremap <leader>b :!./build.sh<CR>
 
 set shiftwidth=2
 set softtabstop=2
