@@ -1,4 +1,5 @@
 #pragma once
+#include <climits>
 #include <vector>
 #include <flecs.h>
 
@@ -6,8 +7,8 @@ class State
 {
 public:
   virtual ~State() {}
-  virtual void enter() const = 0;
-  virtual void exit() const = 0;
+  virtual void enter(flecs::world &ecs, flecs::entity entity) const = 0;
+  virtual void exit(flecs::world &ecs, flecs::entity entity) const = 0;
   virtual void act(float dt, flecs::world &ecs, flecs::entity entity) const = 0;
 };
 
@@ -20,9 +21,12 @@ public:
 
 class StateMachine
 {
-  int curStateIdx = 0;
-  std::vector<State*> states;
-  std::vector<std::vector<std::pair<StateTransition*, int>>> transitions;
+  int curStateIdx = INT_MAX;
+  std::vector<State *> states;
+  std::vector<std::vector<std::pair<StateTransition *, int>>> transitions;
+
+  friend class NestedSMStage;
+
 public:
   StateMachine() = default;
   StateMachine(const StateMachine &sm) = default;
@@ -39,4 +43,3 @@ public:
   int addState(State *st);
   void addTransition(StateTransition *trans, int from, int to);
 };
-

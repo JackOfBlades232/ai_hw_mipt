@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 struct Position;
 struct MovePos;
 
@@ -39,10 +41,22 @@ inline bool operator==(const MovePos &lhs, const MovePos &rhs) { return lhs.x ==
 inline bool operator==(const MovePos &lhs, const Position &rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
 
 
-struct PatrolPos
+struct DestinationPos
 {
   int x = 0;
   int y = 0;
+};
+
+struct ShotDirection
+{
+  float x = 0.f;
+  float y = 0.f;
+};
+
+struct BulletPos
+{
+  float x = 0.f;
+  float y = 0.f;
 };
 
 struct Hitpoints
@@ -60,6 +74,7 @@ enum Actions
   EA_MOVE_UP,
   EA_MOVE_END,
   EA_ATTACK = EA_MOVE_END,
+  EA_SHOOT,
   EA_NUM
 };
 
@@ -89,6 +104,13 @@ struct PowerupAmount
   float amount = 0.f;
 };
 
+struct HealerPouch // Sorry
+{
+  float amount = 0.f;
+  int cooldown = 0;
+  int maxCooldown = 0;
+};
+
 struct PlayerInput
 {
   bool left = false;
@@ -102,12 +124,39 @@ struct Symbol
   char symb;
 };
 
-struct IsPlayer {};
+struct IsPlayer
+{};
 
 struct Team
 {
   int team = 0;
 };
 
-struct TextureSource {};
+struct TextureSource
+{};
 
+struct Activity
+{
+  int turnsLeft = 0;
+};
+
+struct CrafterState // Sorry
+{
+  float money = 0;
+  float craftingSkill = 0;
+  float boredom = 0;
+  float sleepDeprivation = 0;
+};
+
+// Again, sorry for function
+using CrafterStateChecker = std::function<bool(const CrafterState &)>;
+
+struct CraftStation
+{
+  float yield = 0;
+};
+
+struct Flophouse
+{
+  float nightCost = 0;
+};

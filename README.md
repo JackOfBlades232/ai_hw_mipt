@@ -1,26 +1,16 @@
-Learning materials for the course "AI for videogames" based on simple roguelike mechanics.
-* w1 - FSM
-* w2 - Behaviour Trees + blackboard
-* w3 - Utility functions
-* w4 - Emergent behaviour
-* w5 - Goal Oriented Action Planning
+# HW1
 
-## Dependencies
-This project uses:
-* bgfx for week1 project
-* raylib for week2 and later project
-* flecs for ECS
+How to use (cli args):\
+By default, all entities go at once. Otherwise:\
+-demoIntial : spawn only enemies/powerups from master\
+-demoNewEnemies : spawn only new enemies -- slimes and archers\
+-demoNewAlly : spawn only the swordsman-healer\
+-demoNewEnemiesAndAllies : the two prev options combined\
+-demoAllCombat : spawn all enemies and healer\
+-demoCrafter : spawn only crafter (see stdout for his detailed state)
 
-## Building
+By default, field is zoomed out. to adjust scale (1 is initial from master)\
+-drawScale %val : where %val is a float literal
 
-To build you first need to update submodules:
-```
-git submodule sync
-git submodule update --init --recursive
-```
+Here are the graphs for state machines:
 
-Then you need to build using cmake:
-```
-cmake -B build
-cmake --build build
-```
