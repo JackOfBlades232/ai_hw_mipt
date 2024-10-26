@@ -68,6 +68,19 @@ public:
   void act(float /* dt*/, flecs::world &, flecs::entity) const override {}
 };
 
+class NestedSmState : public State
+{
+  StateMachine *sm; // owning
+
+public:
+  NestedSmState(StateMachine *in_sm) : sm(in_sm) {}
+  ~NestedSmState() override { delete sm; }
+
+  void enter() const override {}
+  void exit() const override {}
+  void act(float dt, flecs::world &ecs, flecs::entity entity) const override { sm->act(dt, ecs, entity); }
+};
+
 class EnemyAvailableTransition : public StateTransition
 {
   float triggerDist;
@@ -149,6 +162,7 @@ State *create_flee_from_enemy_state() { return new FleeFromEnemyState(); }
 State *create_patrol_state(float patrol_dist) { return new PatrolState(patrol_dist); }
 
 State *create_nop_state() { return new NopState(); }
+State *create_nested_sm_state(StateMachine *sm) { return new NestedSmState(sm); }
 
 // transitions
 StateTransition *create_enemy_available_transition(float dist) { return new EnemyAvailableTransition(dist); }
