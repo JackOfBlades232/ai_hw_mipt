@@ -107,16 +107,19 @@ struct Symbol
   char symb;
 };
 
-struct IsPlayer {};
+struct IsPlayer
+{};
 
-struct WorldInfoGatherer {};
+struct WorldInfoGatherer
+{};
 
 struct Team
 {
   int team = 0;
 };
 
-struct TextureSource {};
+struct TextureSource
+{};
 
 struct TurnCounter
 {
@@ -128,4 +131,3 @@ struct ActionLog
   std::vector<std::string> log;
   size_t capacity = 5;
 };
-

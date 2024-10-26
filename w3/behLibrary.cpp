@@ -8,7 +8,7 @@
 
 struct CompoundNode : public BehNode
 {
-  std::vector<BehNode*> nodes;
+  std::vector<BehNode *> nodes;
 
   virtual ~CompoundNode()
   {
@@ -54,7 +54,7 @@ struct Selector : public CompoundNode
 
 struct UtilitySelector : public BehNode
 {
-  std::vector<std::pair<BehNode*, utility_function>> utilityNodes;
+  std::vector<std::pair<BehNode *, utility_function>> utilityNodes;
 
   BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
   {
@@ -64,10 +64,7 @@ struct UtilitySelector : public BehNode
       const float utilityScore = utilityNodes[i].second(bb);
       utilityScores.push_back(std::make_pair(utilityScore, i));
     }
-    std::sort(utilityScores.begin(), utilityScores.end(), [](auto &lhs, auto &rhs)
-    {
-      return lhs.first > rhs.first;
-    });
+    std::sort(utilityScores.begin(), utilityScores.end(), [](auto &lhs, auto &rhs) { return lhs.first > rhs.first; });
     for (const std::pair<float, size_t> &node : utilityScores)
     {
       size_t nodeIdx = node.second;
@@ -82,24 +79,19 @@ struct UtilitySelector : public BehNode
 struct MoveToEntity : public BehNode
 {
   size_t entityBb = size_t(-1); // wraps to 0xff...
-  MoveToEntity(flecs::entity entity, const char *bb_name)
-  {
-    entityBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name);
-  }
+  MoveToEntity(flecs::entity entity, const char *bb_name) { entityBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name); }
 
   BehResult update(flecs::world &, flecs::entity entity, Blackboard &bb) override
   {
     BehResult res = BEH_RUNNING;
-    entity.insert([&](Action &a, const Position &pos)
-    {
+    entity.insert([&](Action &a, const Position &pos) {
       flecs::entity targetEntity = bb.get<flecs::entity>(entityBb);
       if (!targetEntity.is_alive())
       {
         res = BEH_FAIL;
         return;
       }
-      targetEntity.get([&](const Position &target_pos)
-      {
+      targetEntity.get([&](const Position &target_pos) {
         if (pos != target_pos)
         {
           a.action = move_towards(pos, target_pos);
@@ -121,10 +113,7 @@ struct IsLowHp : public BehNode
   BehResult update(flecs::world &, flecs::entity entity, Blackboard &) override
   {
     BehResult res = BEH_SUCCESS;
-    entity.get([&](const Hitpoints &hp)
-    {
-      res = hp.hitpoints < threshold ? BEH_SUCCESS : BEH_FAIL;
-    });
+    entity.get([&](const Hitpoints &hp) { res = hp.hitpoints < threshold ? BEH_SUCCESS : BEH_FAIL; });
     return res;
   }
 };
@@ -141,13 +130,11 @@ struct FindEnemy : public BehNode
   {
     BehResult res = BEH_FAIL;
     static auto enemiesQuery = ecs.query<const Position, const Team>();
-    entity.insert([&](const Position &pos, const Team &t)
-    {
+    entity.insert([&](const Position &pos, const Team &t) {
       flecs::entity closestEnemy;
       float closestDist = FLT_MAX;
       Position closestPos;
-      enemiesQuery.each([&](flecs::entity enemy, const Position &epos, const Team &et)
-      {
+      enemiesQuery.each([&](flecs::entity enemy, const Position &epos, const Team &et) {
         if (t.team == et.team)
           return;
         float curDist = dist(epos, pos);
@@ -171,26 +158,19 @@ struct FindEnemy : public BehNode
 struct Flee : public BehNode
 {
   size_t entityBb = size_t(-1);
-  Flee(flecs::entity entity, const char *bb_name)
-  {
-    entityBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name);
-  }
+  Flee(flecs::entity entity, const char *bb_name) { entityBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name); }
 
   BehResult update(flecs::world &, flecs::entity entity, Blackboard &bb) override
   {
     BehResult res = BEH_RUNNING;
-    entity.insert([&](Action &a, const Position &pos)
-    {
+    entity.insert([&](Action &a, const Position &pos) {
       flecs::entity targetEntity = bb.get<flecs::entity>(entityBb);
       if (!targetEntity.is_alive())
       {
         res = BEH_FAIL;
         return;
       }
-      targetEntity.get([&](const Position &target_pos)
-      {
-        a.action = inverse_move(move_towards(pos, target_pos));
-      });
+      targetEntity.get([&](const Position &target_pos) { a.action = inverse_move(move_towards(pos, target_pos)); });
     });
     return res;
   }
@@ -200,21 +180,16 @@ struct Patrol : public BehNode
 {
   size_t pposBb = size_t(-1);
   float patrolDist = 1.f;
-  Patrol(flecs::entity entity, float patrol_dist, const char *bb_name)
-    : patrolDist(patrol_dist)
+  Patrol(flecs::entity entity, float patrol_dist, const char *bb_name) : patrolDist(patrol_dist)
   {
     pposBb = reg_entity_blackboard_var<Position>(entity, bb_name);
-    entity.insert([&](Blackboard &bb, const Position &pos)
-    {
-      bb.set<Position>(pposBb, pos);
-    });
+    entity.insert([&](Blackboard &bb, const Position &pos) { bb.set<Position>(pposBb, pos); });
   }
 
   BehResult update(flecs::world &, flecs::entity entity, Blackboard &bb) override
   {
     BehResult res = BEH_RUNNING;
-    entity.insert([&](Action &a, const Position &pos)
-    {
+    entity.insert([&](Action &a, const Position &pos) {
       Position patrolPos = bb.get<Position>(pposBb);
       if (dist(pos, patrolPos) > patrolDist)
         a.action = move_towards(pos, patrolPos);
@@ -233,8 +208,7 @@ struct PatchUp : public BehNode
   BehResult update(flecs::world &, flecs::entity entity, Blackboard &) override
   {
     BehResult res = BEH_SUCCESS;
-    entity.insert([&](Action &a, Hitpoints &hp)
-    {
+    entity.insert([&](Action &a, Hitpoints &hp) {
       if (hp.hitpoints >= hpThreshold)
         return;
       res = BEH_RUNNING;
@@ -245,8 +219,7 @@ struct PatchUp : public BehNode
 };
 
 
-
-BehNode *sequence(const std::vector<BehNode*> &nodes)
+BehNode *sequence(const std::vector<BehNode *> &nodes)
 {
   Sequence *seq = new Sequence;
   for (BehNode *node : nodes)
@@ -254,7 +227,7 @@ BehNode *sequence(const std::vector<BehNode*> &nodes)
   return seq;
 }
 
-BehNode *selector(const std::vector<BehNode*> &nodes)
+BehNode *selector(const std::vector<BehNode *> &nodes)
 {
   Selector *sel = new Selector;
   for (BehNode *node : nodes)
@@ -262,41 +235,21 @@ BehNode *selector(const std::vector<BehNode*> &nodes)
   return sel;
 }
 
-BehNode *utility_selector(const std::vector<std::pair<BehNode*, utility_function>> &nodes)
+BehNode *utility_selector(const std::vector<std::pair<BehNode *, utility_function>> &nodes)
 {
   UtilitySelector *usel = new UtilitySelector;
   usel->utilityNodes = std::move(nodes);
   return usel;
 }
 
-BehNode *move_to_entity(flecs::entity entity, const char *bb_name)
-{
-  return new MoveToEntity(entity, bb_name);
-}
+BehNode *move_to_entity(flecs::entity entity, const char *bb_name) { return new MoveToEntity(entity, bb_name); }
 
-BehNode *is_low_hp(float thres)
-{
-  return new IsLowHp(thres);
-}
+BehNode *is_low_hp(float thres) { return new IsLowHp(thres); }
 
-BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name)
-{
-  return new FindEnemy(entity, dist, bb_name);
-}
+BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name) { return new FindEnemy(entity, dist, bb_name); }
 
-BehNode *flee(flecs::entity entity, const char *bb_name)
-{
-  return new Flee(entity, bb_name);
-}
+BehNode *flee(flecs::entity entity, const char *bb_name) { return new Flee(entity, bb_name); }
 
-BehNode *patrol(flecs::entity entity, float patrol_dist, const char *bb_name)
-{
-  return new Patrol(entity, patrol_dist, bb_name);
-}
+BehNode *patrol(flecs::entity entity, float patrol_dist, const char *bb_name) { return new Patrol(entity, patrol_dist, bb_name); }
 
-BehNode *patch_up(float thres)
-{
-  return new PatchUp(thres);
-}
-
-
+BehNode *patch_up(float thres) { return new PatchUp(thres); }

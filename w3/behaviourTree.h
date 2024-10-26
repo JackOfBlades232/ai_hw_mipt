@@ -32,9 +32,5 @@ struct BehaviourTree
 
   ~BehaviourTree() = default;
 
-  void update(flecs::world &ecs, flecs::entity entity, Blackboard &bb)
-  {
-    root->update(ecs, entity, bb);
-  }
+  void update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) { root->update(ecs, entity, bb); }
 };
-

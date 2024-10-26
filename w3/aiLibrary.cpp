@@ -10,7 +10,7 @@ class AttackEnemyState : public State
 public:
   void enter() const override {}
   void exit() const override {}
-  void act(float/* dt*/, flecs::world &/*ecs*/, flecs::entity /*entity*/) const override {}
+  void act(float /* dt*/, flecs::world & /*ecs*/, flecs::entity /*entity*/) const override {}
 };
 
 class MoveToEnemyState : public State
@@ -18,12 +18,10 @@ class MoveToEnemyState : public State
 public:
   void enter() const override {}
   void exit() const override {}
-  void act(float/* dt*/, flecs::world &ecs, flecs::entity entity) const override
+  void act(float /* dt*/, flecs::world &ecs, flecs::entity entity) const override
   {
-    on_closest_enemy_pos(ecs, entity, [&](Action &a, const Position &pos, const Position &enemy_pos)
-    {
-      a.action = move_towards(pos, enemy_pos);
-    });
+    on_closest_enemy_pos(ecs, entity,
+      [&](Action &a, const Position &pos, const Position &enemy_pos) { a.action = move_towards(pos, enemy_pos); });
   }
 };
 
@@ -33,26 +31,24 @@ public:
   FleeFromEnemyState() {}
   void enter() const override {}
   void exit() const override {}
-  void act(float/* dt*/, flecs::world &ecs, flecs::entity entity) const override
+  void act(float /* dt*/, flecs::world &ecs, flecs::entity entity) const override
   {
-    on_closest_enemy_pos(ecs, entity, [&](Action &a, const Position &pos, const Position &enemy_pos)
-    {
-      a.action = inverse_move(move_towards(pos, enemy_pos));
-    });
+    on_closest_enemy_pos(ecs, entity,
+      [&](Action &a, const Position &pos, const Position &enemy_pos) { a.action = inverse_move(move_towards(pos, enemy_pos)); });
   }
 };
 
 class PatrolState : public State
 {
   float patrolDist;
+
 public:
   PatrolState(float dist) : patrolDist(dist) {}
   void enter() const override {}
   void exit() const override {}
-  void act(float/* dt*/, flecs::world &, flecs::entity entity) const override
+  void act(float /* dt*/, flecs::world &, flecs::entity entity) const override
   {
-    entity.insert([&](const Position &pos, const PatrolPos &ppos, Action &a)
-    {
+    entity.insert([&](const Position &pos, const PatrolPos &ppos, Action &a) {
       if (dist(pos, ppos) > patrolDist)
         a.action = move_towards(pos, ppos); // do a recovery walk
       else
@@ -69,22 +65,21 @@ class NopState : public State
 public:
   void enter() const override {}
   void exit() const override {}
-  void act(float/* dt*/, flecs::world &, flecs::entity) const override {}
+  void act(float /* dt*/, flecs::world &, flecs::entity) const override {}
 };
 
 class EnemyAvailableTransition : public StateTransition
 {
   float triggerDist;
+
 public:
   EnemyAvailableTransition(float in_dist) : triggerDist(in_dist) {}
   bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
   {
     static auto enemiesQuery = ecs.query<const Position, const Team>();
     bool enemiesFound = false;
-    entity.get([&](const Position &pos, const Team &t)
-    {
-      enemiesQuery.each([&](const Position &epos, const Team &et)
-      {
+    entity.get([&](const Position &pos, const Team &t) {
+      enemiesQuery.each([&](const Position &epos, const Team &et) {
         if (t.team == et.team)
           return;
         float curDist = dist(epos, pos);
@@ -98,15 +93,13 @@ public:
 class HitpointsLessThanTransition : public StateTransition
 {
   float threshold;
+
 public:
   HitpointsLessThanTransition(float in_thres) : threshold(in_thres) {}
   bool isAvailable(flecs::world &, flecs::entity entity) const override
   {
     bool hitpointsThresholdReached = false;
-    entity.get([&](const Hitpoints &hp)
-    {
-      hitpointsThresholdReached |= hp.hitpoints < threshold;
-    });
+    entity.get([&](const Hitpoints &hp) { hitpointsThresholdReached |= hp.hitpoints < threshold; });
     return hitpointsThresholdReached;
   }
 };
@@ -114,10 +107,7 @@ public:
 class EnemyReachableTransition : public StateTransition
 {
 public:
-  bool isAvailable(flecs::world &, flecs::entity) const override
-  {
-    return false;
-  }
+  bool isAvailable(flecs::world &, flecs::entity) const override { return false; }
 };
 
 class NegateTransition : public StateTransition
@@ -127,10 +117,7 @@ public:
   NegateTransition(const StateTransition *in_trans) : transition(in_trans) {}
   ~NegateTransition() override { delete transition; }
 
-  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override
-  {
-    return !transition->isAvailable(ecs, entity);
-  }
+  bool isAvailable(flecs::world &ecs, flecs::entity entity) const override { return !transition->isAvailable(ecs, entity); }
 };
 
 class AndTransition : public StateTransition
@@ -153,53 +140,22 @@ public:
 
 
 // states
-State *create_attack_enemy_state()
-{
-  return new AttackEnemyState();
-}
-State *create_move_to_enemy_state()
-{
-  return new MoveToEnemyState();
-}
+State *create_attack_enemy_state() { return new AttackEnemyState(); }
+State *create_move_to_enemy_state() { return new MoveToEnemyState(); }
 
-State *create_flee_from_enemy_state()
-{
-  return new FleeFromEnemyState();
-}
+State *create_flee_from_enemy_state() { return new FleeFromEnemyState(); }
 
 
-State *create_patrol_state(float patrol_dist)
-{
-  return new PatrolState(patrol_dist);
-}
+State *create_patrol_state(float patrol_dist) { return new PatrolState(patrol_dist); }
 
-State *create_nop_state()
-{
-  return new NopState();
-}
+State *create_nop_state() { return new NopState(); }
 
 // transitions
-StateTransition *create_enemy_available_transition(float dist)
-{
-  return new EnemyAvailableTransition(dist);
-}
+StateTransition *create_enemy_available_transition(float dist) { return new EnemyAvailableTransition(dist); }
 
-StateTransition *create_enemy_reachable_transition()
-{
-  return new EnemyReachableTransition();
-}
+StateTransition *create_enemy_reachable_transition() { return new EnemyReachableTransition(); }
 
-StateTransition *create_hitpoints_less_than_transition(float thres)
-{
-  return new HitpointsLessThanTransition(thres);
-}
+StateTransition *create_hitpoints_less_than_transition(float thres) { return new HitpointsLessThanTransition(thres); }
 
-StateTransition *create_negate_transition(StateTransition *in)
-{
-  return new NegateTransition(in);
-}
-StateTransition *create_and_transition(StateTransition *lhs, StateTransition *rhs)
-{
-  return new AndTransition(lhs, rhs);
-}
-
+StateTransition *create_negate_transition(StateTransition *in) { return new NegateTransition(in); }
+StateTransition *create_and_transition(StateTransition *lhs, StateTransition *rhs) { return new AndTransition(lhs, rhs); }

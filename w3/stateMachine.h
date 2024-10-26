@@ -21,8 +21,9 @@ public:
 class StateMachine
 {
   size_t curStateIdx = 0;
-  std::vector<State*> states;
-  std::vector<std::vector<std::pair<StateTransition*, int>>> transitions;
+  std::vector<State *> states;
+  std::vector<std::vector<std::pair<StateTransition *, int>>> transitions;
+
 public:
   StateMachine() = default;
   StateMachine(const StateMachine &sm) = default;
@@ -39,4 +40,3 @@ public:
   int addState(State *st);
   void addTransition(StateTransition *trans, int from, int to);
 };
-

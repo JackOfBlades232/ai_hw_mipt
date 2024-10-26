@@ -6,7 +6,7 @@
 #include <flecs.h>
 #include "ecsTypes.h"
 
-template<typename DataType>
+template <typename DataType>
 class NamedDataPool
 {
 public:
@@ -22,15 +22,10 @@ public:
     return idx;
   }
 
-  void set(size_t idx, const DataType &in_data)
-  {
-    data[idx] = in_data;
-  }
+  void set(size_t idx, const DataType &in_data) { data[idx] = in_data; }
 
-  DataType get(size_t idx) const
-  {
-    return data[idx];
-  }
+  DataType get(size_t idx) const { return data[idx]; }
+
 private:
   std::unordered_map<std::string, size_t> nameIndices;
   std::vector<DataType> data;
@@ -42,30 +37,29 @@ class Blackboard : public NamedDataPool<float>,
                    public NamedDataPool<Position>
 {
 public:
-  template<typename DataType>
+  template <typename DataType>
   size_t regName(const std::string &name)
   {
     return NamedDataPool<DataType>::regName(name);
   }
 
-  template<typename DataType>
+  template <typename DataType>
   void set(size_t idx, const DataType &in_data)
   {
     NamedDataPool<DataType>::set(idx, in_data);
   }
 
-  template<typename DataType>
+  template <typename DataType>
   DataType get(size_t idx) const
   {
     return NamedDataPool<DataType>::get(idx);
   }
 
   // not perf optimized
-  template<typename DataType>
+  template <typename DataType>
   DataType get(const char *name)
   {
     size_t idx = regName<DataType>(name);
     return NamedDataPool<DataType>::get(idx);
   }
 };
-
