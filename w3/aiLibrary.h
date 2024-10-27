@@ -23,6 +23,9 @@ using utility_function = std::function<float(Blackboard &)>;
 
 BehNode *sequence(const std::vector<BehNode *> &nodes);
 BehNode *selector(const std::vector<BehNode *> &nodes);
+BehNode *inverter(BehNode *node);
+BehNode *xorer(BehNode *node1, BehNode *node2);
+BehNode *repeatn(BehNode *node, size_t n);
 BehNode *utility_selector(const std::vector<std::pair<BehNode *, utility_function>> &nodes);
 
 BehNode *move_to_entity(flecs::entity entity, const char *bb_name);

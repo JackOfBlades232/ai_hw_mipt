@@ -1,4 +1,5 @@
 #include "aiLibrary.h"
+#include "behaviourTree.h"
 #include "ecsTypes.h"
 #include "aiUtils.h"
 #include "math.h"
@@ -49,6 +50,60 @@ struct Selector : public CompoundNode
         return res;
     }
     return BEH_FAIL;
+  }
+};
+
+struct Not : public BehNode
+{
+  BehNode *node;
+
+  Not(BehNode *a_node) : node(a_node) {}
+  ~Not() override { delete node; }
+
+  BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
+  {
+    BehResult res = node->update(ecs, entity, bb);
+    return res == BEH_SUCCESS ? BEH_FAIL : (res == BEH_FAIL ? BEH_SUCCESS : BEH_RUNNING);
+  }
+};
+
+struct Xor : public BehNode
+{
+  BehNode *node1, *node2;
+
+  Xor(BehNode *a_node1, BehNode *a_node2) : node1(a_node1), node2(a_node2) {}
+  ~Xor() override
+  {
+    delete node1;
+    delete node2;
+  }
+
+  BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
+  {
+    BehResult res1 = node1->update(ecs, entity, bb);
+    BehResult res2 = node2->update(ecs, entity, bb);
+    // @TODO: how does this work w/ running?
+    return ((res1 == BEH_SUCCESS && res2 == BEH_FAIL) || (res1 == BEH_FAIL && res2 == BEH_SUCCESS)) ? BEH_SUCCESS : BEH_FAIL;
+  }
+};
+
+struct Repeat : public BehNode
+{
+  BehNode *node;
+  size_t n;
+
+  Repeat(BehNode *a_node, size_t a_n) : node(a_node), n(a_n) {}
+  ~Repeat() override { delete node; }
+
+  BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
+  {
+    for (size_t i = 0; i < n; ++i)
+    {
+      BehResult res = node->update(ecs, entity, bb);
+      if (res != BEH_SUCCESS)
+        return res;
+    }
+    return BEH_SUCCESS;
   }
 };
 
@@ -234,6 +289,10 @@ BehNode *selector(const std::vector<BehNode *> &nodes)
     sel->pushNode(node);
   return sel;
 }
+
+BehNode *inverter(BehNode *node) { return new Not(node); }
+BehNode *xorer(BehNode *node1, BehNode *node2) { return new Xor(node1, node2); }
+BehNode *repeatn(BehNode *node, size_t n) { return new Repeat(node, n); }
 
 BehNode *utility_selector(const std::vector<std::pair<BehNode *, utility_function>> &nodes)
 {

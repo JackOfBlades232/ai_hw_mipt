@@ -47,11 +47,15 @@ int main(int /*argc*/, const char ** /*argv*/)
     update_camera(camera, ecs);
 
     BeginDrawing();
-    ClearBackground(GetColor(0x052c46ff));
-    BeginMode2D(camera);
-    ecs.progress();
-    EndMode2D();
-    print_stats(ecs);
+    {
+      ClearBackground(GetColor(0x052c46ff));
+      BeginMode2D(camera);
+      {
+        ecs.progress();
+      }
+      EndMode2D();
+      print_stats(ecs);
+    }
     // Advance to next frame. Process submitted rendering primitives.
     EndDrawing();
   }
