@@ -8,7 +8,6 @@
 
 static void create_fuzzy_monster_beh(flecs::entity e)
 {
-  e.set(Blackboard{});
   BehNode *root = utility_selector({std::make_pair(sequence({find_enemy(e, 4.f, "flee_enemy"), flee(e, "flee_enemy")}),
                                       [](Blackboard &bb) {
                                         const float hp = bb.get<float>("hp");
@@ -29,11 +28,11 @@ static void create_fuzzy_monster_beh(flecs::entity e)
   e.set(BehaviourTree{root});
 }
 
-static void create_minotaur_beh(flecs::entity e)
+static void create_gatherer_beh(flecs::entity e)
 {
-  e.set(Blackboard{});
-  BehNode *root = selector({sequence({is_low_hp(50.f), find_enemy(e, 4.f, "flee_enemy"), flee(e, "flee_enemy")}),
-    sequence({find_enemy(e, 3.f, "attack_enemy"), move_to_entity(e, "attack_enemy")}), patrol(e, 2.f, "patrol_pos")});
+  BehNode *root = selector({sequence({find_heal_or_powerup(e, 10.f, "gather_pickup"), move_to_entity(e, "gather_pickup")}),
+    sequence({move_to_entity(e, "spawn_point"), spawn_heals_and_powerups(20.f, 2)})});
+  e.add<WorldInfoGatherer>();
   e.set(BehaviourTree{root});
 }
 
@@ -54,6 +53,31 @@ static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color col, 
     .set(Blackboard{});
 }
 
+static flecs::entity create_gatherer(flecs::world &ecs, int x, int y, Color col, const char *texture_src)
+{
+  flecs::entity textureSrc = ecs.entity(texture_src);
+  flecs::entity spawn = ecs.entity().set(Position{x, y}).set(Color{0x33, 0x33, 0x33, 0xff});
+  flecs::entity gatherer = ecs.entity()
+    .set(Position{x, y})
+    .set(MovePos{x, y})
+    .set(Hitpoints{100.f})
+    .set(Action{EA_NOP})
+    .set(Color{col})
+    .add<TextureSource>(textureSrc)
+    .set(StateMachine{})
+    .set(Team{2})
+    .set(NumActions{1, 0})
+    .set(MeleeDamage{20.f})
+    .set(Blackboard{})
+    .set(HealsCollected{0})
+    .set(PowerupsCollected{0});
+  gatherer.insert([&](Blackboard &bb) {
+    size_t id = bb.regName<flecs::entity>("spawn_point");
+    bb.set(id, spawn);
+  });
+  return gatherer;
+}
+
 static void create_player(flecs::world &ecs, int x, int y, const char *texture_src)
 {
   flecs::entity textureSrc = ecs.entity(texture_src);
@@ -61,7 +85,6 @@ static void create_player(flecs::world &ecs, int x, int y, const char *texture_s
     .set(Position{x, y})
     .set(MovePos{x, y})
     .set(Hitpoints{100.f})
-    //.set(Color{0xee, 0xee, 0xee, 0xff})
     .set(Action{EA_NOP})
     .add<IsPlayer>()
     .set(Team{0})
@@ -135,7 +158,8 @@ void init_roguelike(flecs::world &ecs)
   create_fuzzy_monster_beh(create_monster(ecs, 5, 5, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
   create_fuzzy_monster_beh(create_monster(ecs, 10, -5, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
   create_fuzzy_monster_beh(create_monster(ecs, -5, -5, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex"));
-  create_fuzzy_monster_beh(create_monster(ecs, -5, 5, Color{0, 255, 0, 255}, "minotaur_tex"));
+
+  create_gatherer_beh(create_gatherer(ecs, -5, 5, Color{0, 255, 0, 255}, "minotaur_tex"));
 
   create_player(ecs, 0, 0, "swordsman_tex");
 
@@ -242,6 +266,7 @@ static void process_actions(flecs::world &ecs)
   });
 
   static auto playerPickup = ecs.query<const IsPlayer, const Position, Hitpoints, MeleeDamage>();
+  static auto gathererPickup = ecs.query<const Position, HealsCollected, PowerupsCollected>();
   static auto healPickup = ecs.query<const Position, const HealAmount>();
   static auto powerupPickup = ecs.query<const Position, const PowerupAmount>();
   ecs.defer([&] {
@@ -257,6 +282,22 @@ static void process_actions(flecs::world &ecs)
         if (pos == ppos)
         {
           dmg.damage += amt.amount;
+          entity.destruct();
+        }
+      });
+    });
+    gathererPickup.each([&](const Position &pos, HealsCollected &heals, PowerupsCollected &powerups) {
+      healPickup.each([&](flecs::entity entity, const Position &ppos, const HealAmount &) {
+        if (entity.is_alive() && pos == ppos)
+        {
+          ++heals.count;
+          entity.destruct();
+        }
+      });
+      powerupPickup.each([&](flecs::entity entity, const Position &ppos, const PowerupAmount &) {
+        if (entity.is_alive() && pos == ppos)
+        {
+          ++powerups.count;
           entity.destruct();
         }
       });

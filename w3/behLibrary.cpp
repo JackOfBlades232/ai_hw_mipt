@@ -6,6 +6,7 @@
 #include "raylib.h"
 #include "blackboard.h"
 #include <algorithm>
+#include <utility>
 
 struct CompoundNode : public BehNode
 {
@@ -210,6 +211,46 @@ struct FindEnemy : public BehNode
   }
 };
 
+struct FindHealOrPowerup : public BehNode
+{
+  size_t entityBb = size_t(-1);
+  float distance = 0;
+
+  FindHealOrPowerup(flecs::entity entity, float in_dist, const char *bb_name) : distance(in_dist)
+  {
+    entityBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name);
+  }
+
+  BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
+  {
+    BehResult res = BEH_FAIL;
+    static auto healsQuery = ecs.query<const Position, const HealAmount>();
+    static auto powerupsQuery = ecs.query<const Position, const PowerupAmount>();
+    entity.insert([&](const Position &pos, const Team &t) {
+      flecs::entity closestPickup;
+      float closestDist = FLT_MAX;
+      Position closestPos;
+      auto updateClosest = [&](flecs::entity pickup, const Position &ppos) {
+        float curDist = dist(ppos, pos);
+        if (curDist < closestDist)
+        {
+          closestDist = curDist;
+          closestPos = ppos;
+          closestPickup = pickup;
+        }
+      };
+      healsQuery.each([&](flecs::entity pickup, const Position &ppos, const HealAmount &) { updateClosest(pickup, ppos); });
+      powerupsQuery.each([&](flecs::entity pickup, const Position &ppos, const PowerupAmount &) { updateClosest(pickup, ppos); });
+      if (ecs.is_valid(closestPickup) && closestDist <= distance)
+      {
+        bb.set<flecs::entity>(entityBb, closestPickup);
+        res = BEH_SUCCESS;
+      }
+    });
+    return res;
+  }
+};
+
 struct Flee : public BehNode
 {
   size_t entityBb = size_t(-1);
@@ -273,6 +314,39 @@ struct PatchUp : public BehNode
   }
 };
 
+struct SpawnHealsAndPowerups : public BehNode
+{
+  float dist = 20.f;
+  int coeff = 2;
+  SpawnHealsAndPowerups(int a_dist, int a_coeff) : dist(a_dist), coeff(a_coeff) {}
+
+  BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &) override
+  {
+    int pickedHeals;
+    int pickedPowerups;
+    int posX, posY;
+    entity.insert([&](HealsCollected &heals) { pickedHeals = std::exchange(heals.count, 0); });
+    entity.insert([&](PowerupsCollected &powerups) { pickedPowerups = std::exchange(powerups.count, 0); });
+    entity.get([&](const Position &pos) {
+      posX = pos.x;
+      posY = pos.y;
+    });
+
+    auto randPos = [&] {
+      // @TODO: floating, truncate dist properly
+      return Position{posX + randint(-int(dist), int(dist)), posY + randint(-int(dist), int(dist))};
+    };
+    // @NOTE: data about heal/powerup amouns should be carried w/ the gatherer
+    // @NOTE: powerups should not be spawned into the same places
+    for (int i = 0; i < pickedHeals * coeff; ++i)
+      ecs.entity().set(randPos()).set(HealAmount{50.f}).set(Color{0xff, 0x44, 0x44, 0xff});
+    for (int i = 0; i < pickedPowerups * coeff; ++i)
+      ecs.entity().set(randPos()).set(PowerupAmount{10.f}).set(Color{0xff, 0xff, 0x00, 0xff});
+
+    return BEH_SUCCESS;
+  }
+};
+
 
 BehNode *sequence(const std::vector<BehNode *> &nodes)
 {
@@ -306,9 +380,11 @@ BehNode *move_to_entity(flecs::entity entity, const char *bb_name) { return new 
 BehNode *is_low_hp(float thres) { return new IsLowHp(thres); }
 
 BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name) { return new FindEnemy(entity, dist, bb_name); }
+BehNode *find_heal_or_powerup(flecs::entity entity, float dist, const char *bb_name) { return new FindHealOrPowerup(entity, dist, bb_name); }
 
 BehNode *flee(flecs::entity entity, const char *bb_name) { return new Flee(entity, bb_name); }
 
 BehNode *patrol(flecs::entity entity, float patrol_dist, const char *bb_name) { return new Patrol(entity, patrol_dist, bb_name); }
 
 BehNode *patch_up(float thres) { return new PatchUp(thres); }
+BehNode *spawn_heals_and_powerups(float dist, int coeff) { return new SpawnHealsAndPowerups(dist, coeff); }

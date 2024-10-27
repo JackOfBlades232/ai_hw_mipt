@@ -94,6 +94,16 @@ struct PowerupAmount
   float amount = 0.f;
 };
 
+struct HealsCollected
+{
+  int count = 0;
+};
+
+struct PowerupsCollected
+{
+  int count = 0;
+};
+
 struct PlayerInput
 {
   bool left = false;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 
 template <typename T>
 inline T sqr(T a)
@@ -19,3 +21,5 @@ inline float dist(const T &lhs, const U &rhs)
 {
   return sqrtf(dist_sq(lhs, rhs));
 }
+
+inline int randint(int min, int max) { return int((float(rand()) / RAND_MAX) * float(max - min)) + min; }
