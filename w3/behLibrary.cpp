@@ -296,6 +296,19 @@ struct Patrol : public BehNode
   }
 };
 
+struct SwitchWaypoint : public BehNode
+{
+  size_t wpBb = size_t(-1);
+
+  SwitchWaypoint(flecs::entity entity, const char *bb_name) { wpBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name); }
+
+  BehResult update(flecs::world &, flecs::entity, Blackboard &bb) override
+  {
+    bb.get<flecs::entity>(wpBb).get([&](const Waypoint &newtWp) { bb.set(wpBb, newtWp.nextWaypoint); });
+    return BEH_SUCCESS;
+  }
+};
+
 struct PatchUp : public BehNode
 {
   float hpThreshold = 100.f;
@@ -385,6 +398,7 @@ BehNode *find_heal_or_powerup(flecs::entity entity, float dist, const char *bb_n
 BehNode *flee(flecs::entity entity, const char *bb_name) { return new Flee(entity, bb_name); }
 
 BehNode *patrol(flecs::entity entity, float patrol_dist, const char *bb_name) { return new Patrol(entity, patrol_dist, bb_name); }
+BehNode *switch_wp(flecs::entity entity, const char *bb_name) { return new SwitchWaypoint(entity, bb_name); }
 
 BehNode *patch_up(float thres) { return new PatchUp(thres); }
 BehNode *spawn_heals_and_powerups(float dist, int coeff) { return new SpawnHealsAndPowerups(dist, coeff); }

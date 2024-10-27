@@ -5,6 +5,7 @@
 #include "aiLibrary.h"
 #include "blackboard.h"
 #include "math.h"
+#include <cassert>
 
 static void create_fuzzy_monster_beh(flecs::entity e)
 {
@@ -32,7 +33,13 @@ static void create_gatherer_beh(flecs::entity e)
 {
   BehNode *root = selector({sequence({find_heal_or_powerup(e, 10.f, "gather_pickup"), move_to_entity(e, "gather_pickup")}),
     sequence({move_to_entity(e, "spawn_point"), spawn_heals_and_powerups(20.f, 2)})});
-  e.add<WorldInfoGatherer>();
+  e.set(BehaviourTree{root});
+}
+
+static void create_guardsman_beh(flecs::entity e)
+{
+  BehNode *root = selector({sequence({find_enemy(e, 2.f, "attack_enemy"), move_to_entity(e, "attack_enemy")}),
+    sequence({move_to_entity(e, "next_waypoint"), switch_wp(e, "next_waypoint")})});
   e.set(BehaviourTree{root});
 }
 
@@ -60,7 +67,7 @@ static flecs::entity create_gatherer(flecs::world &ecs, int x, int y, Color col,
   flecs::entity gatherer = ecs.entity()
     .set(Position{x, y})
     .set(MovePos{x, y})
-    .set(Hitpoints{100.f})
+    .set(Hitpoints{150.f})
     .set(Action{EA_NOP})
     .set(Color{col})
     .add<TextureSource>(textureSrc)
@@ -76,6 +83,43 @@ static flecs::entity create_gatherer(flecs::world &ecs, int x, int y, Color col,
     bb.set(id, spawn);
   });
   return gatherer;
+}
+
+static flecs::entity create_guardsman(flecs::world &ecs, flecs::entity first_wp, int x, int y, Color col, const char *texture_src)
+{
+  flecs::entity textureSrc = ecs.entity(texture_src);
+  flecs::entity guardsman = ecs.entity()
+    .set(Position{x, y})
+    .set(MovePos{x, y})
+    .set(Hitpoints{300.f})
+    .set(Action{EA_NOP})
+    .set(Color{col})
+    .add<TextureSource>(textureSrc)
+    .set(StateMachine{})
+    .set(Team{2})
+    .set(NumActions{1, 0})
+    .set(MeleeDamage{20.f})
+    .set(Blackboard{});
+  guardsman.insert([&](Blackboard &bb) {
+    size_t id = bb.regName<flecs::entity>("next_waypoint");
+    bb.set(id, first_wp);
+  });
+  return guardsman;
+}
+
+static flecs::entity create_waypoint_loop(flecs::world &ecs, const std::vector<Position> &points)
+{
+  assert(points.size() > 0);
+  flecs::entity first = ecs.entity().set(points[0]).set(Color{0x44, 0x44, 0x44, 0x44});
+  flecs::entity prev = first;
+  for (size_t i = 1; i < points.size(); ++i) {
+    flecs::entity next = ecs.entity().set(points[i]).set(Color{0x44, 0x44, 0x44, 0x44});
+    prev.set(Waypoint{next});
+    prev = next;
+  }
+  if (points.size() > 1)
+    prev.set(Waypoint{first});
+  return first;
 }
 
 static void create_player(flecs::world &ecs, int x, int y, const char *texture_src)
@@ -161,11 +205,20 @@ void init_roguelike(flecs::world &ecs)
 
   create_gatherer_beh(create_gatherer(ecs, -5, 5, Color{0, 255, 0, 255}, "minotaur_tex"));
 
+  create_guardsman_beh(create_guardsman(ecs, create_waypoint_loop(ecs, {{6, 6}, {-6, 6}, {-6, -6}, {6, -6}}), 6, -6,
+    Color{0, 0, 255, 255}, "minotaur_tex"));
+
   create_player(ecs, 0, 0, "swordsman_tex");
+
+  create_powerup(ecs, -5, -3, 10.f);
+  create_powerup(ecs, -5, 2, 10.f);
 
   create_powerup(ecs, 7, 7, 10.f);
   create_powerup(ecs, 10, -6, 10.f);
   create_powerup(ecs, 10, -4, 10.f);
+
+  create_heal(ecs, -3, -7, 50.f);
+  create_heal(ecs, -3, 2, 50.f);
 
   create_heal(ecs, -5, -5, 50.f);
   create_heal(ecs, -5, 5, 50.f);

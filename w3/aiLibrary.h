@@ -34,5 +34,6 @@ BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name);
 BehNode *find_heal_or_powerup(flecs::entity entity, float dist, const char *bb_name);
 BehNode *flee(flecs::entity entity, const char *bb_name);
 BehNode *patrol(flecs::entity entity, float patrol_dist, const char *bb_name);
+BehNode *switch_wp(flecs::entity entity, const char *bb_name);
 BehNode *patch_up(float thres);
 BehNode *spawn_heals_and_powerups(float dist, int coeff);

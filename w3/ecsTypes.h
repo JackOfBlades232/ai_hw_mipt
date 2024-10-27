@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <flecs.h>
+
 struct Position;
 struct MovePos;
 
@@ -134,6 +136,11 @@ struct TextureSource
 struct TurnCounter
 {
   int count = 0;
+};
+
+struct Waypoint
+{
+  flecs::entity nextWaypoint;
 };
 
 struct ActionLog
