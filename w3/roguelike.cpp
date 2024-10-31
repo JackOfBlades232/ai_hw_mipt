@@ -43,6 +43,30 @@ static void create_guardsman_beh(flecs::entity e)
   e.set(BehaviourTree{root});
 }
 
+static void create_explorer_monster_beh(flecs::entity e)
+{
+  // @TODO: utility functions & proper values
+  BehNode *root = utility_selector({std::make_pair(sequence({find_enemy(e, 4.f, "flee_enemy"), flee(e, "flee_enemy")}),
+                                      [](Blackboard &bb) {
+                                        const float hp = bb.get<float>("hp");
+                                        const float enemyDist = bb.get<float>("enemyDist");
+                                        return (100.f - hp) * 5.f - 50.f * enemyDist;
+                                      }),
+    std::make_pair(sequence({find_enemy(e, 3.f, "attack_enemy"), move_to_entity(e, "attack_enemy")}),
+      [](Blackboard &bb) {
+        const float enemyDist = bb.get<float>("enemyDist");
+        return 100.f - 10.f * enemyDist;
+      }),
+    std::make_pair(sequence({find_heal_or_powerup(e, 10.f, "gather_pickup"), move_to_entity(e, "gather_pickup")}),
+      [](Blackboard &) { return 50.f; }),
+    std::make_pair(sequence({find_ally(e, 10.f, "heal_ally"), move_to_entity(e, "heal_ally"), heal_ally(e, 60.f, "heal_ally")}),
+      [](Blackboard &) { return 50.f; }),
+    std::make_pair(sequence({find_ally(e, 10.f, "follow_ally"), move_to_entity(e, "follow_ally")}),
+      [](Blackboard &) { return 50.f; })});
+  e.add<WorldInfoGatherer>();
+  e.set(BehaviourTree{root});
+}
+
 static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color col, const char *texture_src)
 {
   flecs::entity textureSrc = ecs.entity(texture_src);
@@ -131,6 +155,7 @@ static void create_player(flecs::world &ecs, int x, int y, const char *texture_s
     .set(Hitpoints{100.f})
     .set(Action{EA_NOP})
     .add<IsPlayer>()
+    .add<PickupUser>()
     .set(Team{0})
     .set(PlayerInput{})
     .set(NumActions{2, 0})
@@ -208,6 +233,8 @@ void init_roguelike(flecs::world &ecs)
   create_guardsman_beh(create_guardsman(ecs, create_waypoint_loop(ecs, {{6, 6}, {-6, 6}, {-6, -6}, {6, -6}}), 6, -6,
     Color{0, 0, 255, 255}, "minotaur_tex"));
 
+  create_explorer_monster_beh(create_monster(ecs, 10, 10, Color{0xf1, 0xf1, 0xf1, 0xff}, "minotaur_tex"));
+
   create_player(ecs, 0, 0, "swordsman_tex");
 
   create_powerup(ecs, -5, -3, 10.f);
@@ -273,8 +300,10 @@ static void push_to_log(flecs::world &ecs, const char *msg)
 static void process_actions(flecs::world &ecs)
 {
   static auto processActions = ecs.query<Action, Position, MovePos, const MeleeDamage, const Team>();
+  static auto processHealActions = ecs.query<Action, const Position, const HealAmount, const Team>();
   static auto processHeals = ecs.query<Action, Hitpoints>();
   static auto checkAttacks = ecs.query<const MovePos, Hitpoints, const Team>();
+  static auto checkHealTargets = ecs.query<const Position, Hitpoints, const Team>();
   // Process all actions
   ecs.defer([&] {
     processHeals.each([&](Action &a, Hitpoints &hp) {
@@ -303,6 +332,17 @@ static void process_actions(flecs::world &ecs)
       else
         mpos = nextPos;
     });
+    processHealActions.each([&](flecs::entity entity, Action &a, const Position &pos, const HealAmount &amt, const Team &team) {
+      if (a.action != EA_HEAL_ALLY)
+        return;
+      bool done = false;
+      checkHealTargets.each([&](flecs::entity ally, const Position &apos, Hitpoints &hp, const Team &ateam) {
+        if (done || ally == entity || ateam.team != team.team || dist(pos, apos) > 2.2f) // Random
+          return;
+        hp.hitpoints += amt.amount;
+        done = true;
+      });
+    });
     // now move
     processActions.each([&](Action &a, Position &pos, MovePos &mpos, const MeleeDamage &, const Team &) {
       pos = mpos;
@@ -318,12 +358,12 @@ static void process_actions(flecs::world &ecs)
     });
   });
 
-  static auto playerPickup = ecs.query<const IsPlayer, const Position, Hitpoints, MeleeDamage>();
+  static auto actorPickup = ecs.query<const PickupUser, const Position, Hitpoints, MeleeDamage>();
   static auto gathererPickup = ecs.query<const Position, HealsCollected, PowerupsCollected>();
   static auto healPickup = ecs.query<const Position, const HealAmount>();
   static auto powerupPickup = ecs.query<const Position, const PowerupAmount>();
   ecs.defer([&] {
-    playerPickup.each([&](const IsPlayer &, const Position &pos, Hitpoints &hp, MeleeDamage &dmg) {
+    actorPickup.each([&](const PickupUser &, const Position &pos, Hitpoints &hp, MeleeDamage &dmg) {
       healPickup.each([&](flecs::entity entity, const Position &ppos, const HealAmount &amt) {
         if (pos == ppos)
         {

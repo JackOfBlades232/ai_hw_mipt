@@ -174,36 +174,37 @@ struct IsLowHp : public BehNode
   }
 };
 
-struct FindEnemy : public BehNode
+template <bool ENEMY>
+struct FindActor : public BehNode
 {
   size_t entityBb = size_t(-1);
   float distance = 0;
-  FindEnemy(flecs::entity entity, float in_dist, const char *bb_name) : distance(in_dist)
+  FindActor(flecs::entity entity, float in_dist, const char *bb_name) : distance(in_dist)
   {
     entityBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name);
   }
   BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
   {
     BehResult res = BEH_FAIL;
-    static auto enemiesQuery = ecs.query<const Position, const Team>();
+    static auto actorsQuery = ecs.query<const Position, const Team>();
     entity.insert([&](const Position &pos, const Team &t) {
-      flecs::entity closestEnemy;
+      flecs::entity closestActor;
       float closestDist = FLT_MAX;
       Position closestPos;
-      enemiesQuery.each([&](flecs::entity enemy, const Position &epos, const Team &et) {
-        if (t.team == et.team)
+      actorsQuery.each([&](flecs::entity enemy, const Position &apos, const Team &at) {
+        if ((ENEMY && t.team == at.team) || (!ENEMY && t.team != at.team))
           return;
-        float curDist = dist(epos, pos);
+        float curDist = dist(apos, pos);
         if (curDist < closestDist)
         {
           closestDist = curDist;
-          closestPos = epos;
-          closestEnemy = enemy;
+          closestPos = apos;
+          closestActor = enemy;
         }
       });
-      if (ecs.is_valid(closestEnemy) && closestDist <= distance)
+      if (ecs.is_valid(closestActor) && closestDist <= distance)
       {
-        bb.set<flecs::entity>(entityBb, closestEnemy);
+        bb.set<flecs::entity>(entityBb, closestActor);
         res = BEH_SUCCESS;
       }
     });
@@ -314,7 +315,7 @@ struct PatchUp : public BehNode
   float hpThreshold = 100.f;
   PatchUp(float threshold) : hpThreshold(threshold) {}
 
-  BehResult update(flecs::world &, flecs::entity entity, Blackboard &) override
+  BehResult update(flecs::world &, flecs::entity entity, Blackboard &bb) override
   {
     BehResult res = BEH_SUCCESS;
     entity.insert([&](Action &a, Hitpoints &hp) {
@@ -322,6 +323,28 @@ struct PatchUp : public BehNode
         return;
       res = BEH_RUNNING;
       a.action = EA_HEAL_SELF;
+    });
+    return res;
+  }
+};
+
+struct HealAlly : public BehNode
+{
+  size_t allyBb = size_t(-1);
+  float hpThreshold = 100.f;
+  HealAlly(flecs::entity entity, float threshold, const char *bb_name) : hpThreshold(threshold)
+  {
+    allyBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_name);
+  }
+
+  BehResult update(flecs::world &, flecs::entity, Blackboard &bb) override
+  {
+    BehResult res = BEH_SUCCESS;
+    bb.get<flecs::entity>(allyBb).insert([&](Action &a, Hitpoints &hp) {
+      if (hp.hitpoints >= hpThreshold)
+        return;
+      res = BEH_RUNNING;
+      a.action = EA_HEAL_ALLY;
     });
     return res;
   }
@@ -392,7 +415,8 @@ BehNode *move_to_entity(flecs::entity entity, const char *bb_name) { return new 
 
 BehNode *is_low_hp(float thres) { return new IsLowHp(thres); }
 
-BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name) { return new FindEnemy(entity, dist, bb_name); }
+BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name) { return new FindActor<true>(entity, dist, bb_name); }
+BehNode *find_ally(flecs::entity entity, float dist, const char *bb_name) { return new FindActor<false>(entity, dist, bb_name); }
 BehNode *find_heal_or_powerup(flecs::entity entity, float dist, const char *bb_name) { return new FindHealOrPowerup(entity, dist, bb_name); }
 
 BehNode *flee(flecs::entity entity, const char *bb_name) { return new Flee(entity, bb_name); }
@@ -401,4 +425,5 @@ BehNode *patrol(flecs::entity entity, float patrol_dist, const char *bb_name) { 
 BehNode *switch_wp(flecs::entity entity, const char *bb_name) { return new SwitchWaypoint(entity, bb_name); }
 
 BehNode *patch_up(float thres) { return new PatchUp(thres); }
+BehNode *heal_ally(flecs::entity entity, float thres, const char *bb_name) { return new HealAlly(entity, thres, bb_name); }
 BehNode *spawn_heals_and_powerups(float dist, int coeff) { return new SpawnHealsAndPowerups(dist, coeff); }

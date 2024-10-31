@@ -67,6 +67,7 @@ enum Actions
   EA_MOVE_END,
   EA_ATTACK = EA_MOVE_END,
   EA_HEAL_SELF,
+  EA_HEAL_ALLY,
   EA_NUM
 };
 
@@ -123,6 +124,9 @@ struct IsPlayer
 {};
 
 struct WorldInfoGatherer
+{};
+
+struct PickupUser
 {};
 
 struct Team
