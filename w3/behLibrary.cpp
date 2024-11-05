@@ -8,6 +8,100 @@
 #include <algorithm>
 #include <utility>
 
+class Utility
+{
+public:
+  using UnderlyingFunc = utility_function;
+
+  Utility(UnderlyingFunc &&base) : baseUtility(std::move(base)) {}
+  virtual ~Utility() {}
+
+  float operator()(Blackboard &bb) {
+    return modifier() * baseUtility(bb);
+  }
+
+  virtual void enter() = 0;
+  //virtual void exit() = 0; // Would be needed for "runtime"
+
+  virtual float modifier() = 0;
+
+private:
+  UnderlyingFunc baseUtility;
+};
+
+class PureUtility
+{
+public:
+  using UnderlyingFunc = pure_utility_function;
+
+  PureUtility(UnderlyingFunc &&base) : baseUtility(std::move(base)) {}
+  virtual ~PureUtility() {}
+
+  float operator()(Blackboard &bb, const WorldEntSensorInfo &info) {
+    return modifier() * baseUtility(bb, info);
+  }
+
+  virtual void enter() = 0;
+  //virtual void exit() = 0; // Would be needed for "runtime"
+
+  virtual float modifier() = 0;
+
+private:
+  UnderlyingFunc baseUtility;
+};
+
+template <class BaseUtility>
+class SimpleUtilityGen : public BaseUtility
+{
+public:
+  SimpleUtilityGen(typename BaseUtility::UnderlyingFunc &&base) : BaseUtility(std::move(base)) {}
+  ~SimpleUtilityGen() override = default;
+  void enter() override {}
+  float modifier() override { return 1.f; }
+};
+
+template <class BaseUtility>
+class CooldownUtilityGen : public BaseUtility
+{
+public:
+  CooldownUtilityGen(typename BaseUtility::UnderlyingFunc &&base, int cd, float coeff, flecs::entity self) :
+    BaseUtility(std::move(base)), selfRef(self), cd(cd), coeff(coeff)
+  {}
+  ~CooldownUtilityGen() override = default;
+
+  void enter() override
+  {
+    selfRef.insert([this](Cooldown &cdHolder) { cdHolder.turnsLeft = cd; });
+  }
+  float modifier() override
+  {
+    int turnsLeft = 0;
+    selfRef.get([&](const Cooldown &cdHolder) { turnsLeft = cdHolder.turnsLeft; });
+    return float(turnsLeft + 1.f) * coeff;
+  }
+
+private:
+  flecs::entity selfRef;
+  int cd;
+  float coeff;
+};
+
+using SimpleUtility = SimpleUtilityGen<Utility>;
+using CooldownUtility = CooldownUtilityGen<Utility>;
+using SimplePureUtility = SimpleUtilityGen<PureUtility>;
+using CooldownPureUtility = CooldownUtilityGen<PureUtility>;
+
+UtilityRef make_utility(utility_function &&f) { return new SimpleUtility{std::move(f)}; }
+UtilityRef make_cd_utility(utility_function &&f, int cd, float coeff, flecs::entity ent)
+{
+  return new CooldownUtility{std::move(f), cd, coeff, ent};
+}
+PureUtilityRef make_pure_utility(pure_utility_function &&f) { return new SimplePureUtility{std::move(f)}; }
+PureUtilityRef make_cd_pure_utility(pure_utility_function &&f, int cd, float coeff, flecs::entity ent)
+{
+  return new CooldownPureUtility{std::move(f), cd, coeff, ent};
+}
+
 struct CompoundNode : public BehNode
 {
   std::vector<BehNode *> nodes;
@@ -110,14 +204,14 @@ struct Repeat : public BehNode
 
 struct UtilitySelector : public BehNode
 {
-  std::vector<std::pair<BehNode *, utility_function>> utilityNodes;
+  std::vector<std::pair<BehNode *, UtilityRef>> utilityNodes;
 
   BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
   {
     std::vector<std::pair<float, size_t>> utilityScores;
     for (size_t i = 0; i < utilityNodes.size(); ++i)
     {
-      const float utilityScore = utilityNodes[i].second(bb);
+      const float utilityScore = (*utilityNodes[i].second)(bb);
       utilityScores.push_back(std::make_pair(utilityScore, i));
     }
     std::sort(utilityScores.begin(), utilityScores.end(), [](auto &lhs, auto &rhs) { return lhs.first > rhs.first; });
@@ -126,7 +220,67 @@ struct UtilitySelector : public BehNode
       size_t nodeIdx = node.second;
       BehResult res = utilityNodes[nodeIdx].first->update(ecs, entity, bb);
       if (res != BEH_FAIL)
+      {
+        utilityNodes[nodeIdx].second->enter();
         return res;
+      }
+    }
+    return BEH_FAIL;
+  }
+};
+
+struct PureUtilitySelector : public BehNode
+{
+  using NodeVector = std::vector<std::pair<BehNode *, PureUtilityRef>>;
+
+  NodeVector utilityNodes;
+  size_t allTargetsBb = size_t(-1);
+  size_t chosenTargetBb = size_t(-1);
+
+  PureUtilitySelector(flecs::entity entity, NodeVector &&nodes, const char *bb_all_targets_name,
+    const char *bb_chosen_target_name) :
+    utilityNodes(std::move(nodes))
+  {
+    allTargetsBb = reg_entity_blackboard_var<std::vector<WorldEntSensorInfo>>(entity, bb_all_targets_name);
+    chosenTargetBb = reg_entity_blackboard_var<flecs::entity>(entity, bb_chosen_target_name);
+  }
+
+  BehResult update(flecs::world &ecs, flecs::entity entity, Blackboard &bb) override
+  {
+    struct ChoiceIndex
+    {
+      size_t actionId;
+      size_t targetId;
+    };
+    std::vector<std::pair<float, ChoiceIndex>> utilityScores;
+    const std::vector<WorldEntSensorInfo> &targets = bb.getCref<std::vector<WorldEntSensorInfo>>(allTargetsBb);
+
+    printf("======================================\n");
+    for (size_t i = 0; i < utilityNodes.size(); ++i)
+    {
+      printf("Node %lu\n", i);
+      for (size_t j = 0; j < targets.size(); ++j)
+      {
+        const float utilityScore = (*utilityNodes[i].second)(bb, targets[j]);
+        utilityScores.push_back(std::make_pair(utilityScore, ChoiceIndex{i, j}));
+        printf("ut(type=%d, dist=%f, hp/amt=%f, name=%s, id=%lu) = %f\n", targets[j].type, targets[j].dist, targets[j].hpOrAmount,
+          targets[j].entTag.name().c_str(), targets[j].entTag.id(), utilityScore);
+      }
+    }
+    std::sort(utilityScores.begin(), utilityScores.end(), [](auto &lhs, auto &rhs) { return lhs.first > rhs.first; });
+
+    for (const auto &node : utilityScores)
+    {
+      bb.set<flecs::entity>(chosenTargetBb, targets[node.second.targetId].entTag);
+      BehResult res = utilityNodes[node.second.actionId].first->update(ecs, entity, bb);
+      if (res != BEH_FAIL)
+      {
+        utilityNodes[node.second.actionId].second->enter();
+        printf("\nChosen for Node %d:  ut(type=%d, dist=%f, hp/amt=%f, name=%s, id=%lu) = %f\n", node.second.actionId,
+          targets[node.second.targetId].type, targets[node.second.targetId].dist, targets[node.second.targetId].hpOrAmount,
+          targets[node.second.targetId].entTag.name().c_str(), targets[node.second.targetId].entTag.id(), node.first);
+        return res;
+      }
     }
     return BEH_FAIL;
   }
@@ -404,10 +558,17 @@ BehNode *inverter(BehNode *node) { return new Not(node); }
 BehNode *xorer(BehNode *node1, BehNode *node2) { return new Xor(node1, node2); }
 BehNode *repeatn(BehNode *node, size_t n) { return new Repeat(node, n); }
 
-BehNode *utility_selector(const std::vector<std::pair<BehNode *, utility_function>> &nodes)
+BehNode *utility_selector(std::vector<std::pair<BehNode *, UtilityRef>> &&nodes)
 {
   UtilitySelector *usel = new UtilitySelector;
   usel->utilityNodes = std::move(nodes);
+  return usel;
+}
+
+BehNode *pure_utility_selector(flecs::entity entity, std::vector<std::pair<BehNode *, PureUtilityRef>> &&nodes,
+  const char *bb_all_targets_name, const char *bb_chosen_target_name)
+{
+  PureUtilitySelector *usel = new PureUtilitySelector(entity, std::move(nodes), bb_all_targets_name, bb_chosen_target_name);
   return usel;
 }
 
@@ -417,7 +578,10 @@ BehNode *is_low_hp(float thres) { return new IsLowHp(thres); }
 
 BehNode *find_enemy(flecs::entity entity, float dist, const char *bb_name) { return new FindActor<true>(entity, dist, bb_name); }
 BehNode *find_ally(flecs::entity entity, float dist, const char *bb_name) { return new FindActor<false>(entity, dist, bb_name); }
-BehNode *find_heal_or_powerup(flecs::entity entity, float dist, const char *bb_name) { return new FindHealOrPowerup(entity, dist, bb_name); }
+BehNode *find_heal_or_powerup(flecs::entity entity, float dist, const char *bb_name)
+{
+  return new FindHealOrPowerup(entity, dist, bb_name);
+}
 
 BehNode *flee(flecs::entity entity, const char *bb_name) { return new Flee(entity, bb_name); }
 

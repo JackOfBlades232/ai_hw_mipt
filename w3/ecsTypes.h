@@ -126,6 +126,9 @@ struct IsPlayer
 struct WorldInfoGatherer
 {};
 
+struct WorldPureInfoGatherer
+{};
+
 struct PickupUser
 {};
 
@@ -151,4 +154,25 @@ struct ActionLog
 {
   std::vector<std::string> log;
   size_t capacity = 5;
+};
+
+enum WorldEntType
+{
+  ENT_ALLY,
+  ENT_ENEMY,
+  ENT_HEAL,
+  ENT_POWERUP,
+};
+
+struct WorldEntSensorInfo
+{
+  WorldEntType type;
+  float dist;
+  float hpOrAmount;
+  flecs::entity entTag;
+};
+
+struct Cooldown
+{
+  int turnsLeft;
 };

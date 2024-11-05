@@ -25,6 +25,7 @@ public:
   void set(size_t idx, const DataType &in_data) { data[idx] = in_data; }
 
   DataType get(size_t idx) const { return data[idx]; }
+  const DataType &getCref(size_t idx) const { return data[idx]; }
 
 private:
   std::unordered_map<std::string, size_t> nameIndices;
@@ -34,7 +35,8 @@ private:
 class Blackboard : public NamedDataPool<float>,
                    public NamedDataPool<int>,
                    public NamedDataPool<flecs::entity>,
-                   public NamedDataPool<Position>
+                   public NamedDataPool<Position>,
+                   public NamedDataPool<std::vector<WorldEntSensorInfo>>
 {
 public:
   template <typename DataType>
@@ -61,5 +63,19 @@ public:
   {
     size_t idx = regName<DataType>(name);
     return NamedDataPool<DataType>::get(idx);
+  }
+
+  template <typename DataType>
+  const DataType &getCref(size_t idx) const
+  {
+    return NamedDataPool<DataType>::getCref(idx);
+  }
+
+  // not perf optimized
+  template <typename DataType>
+  const DataType &getCref(const char *name)
+  {
+    size_t idx = regName<DataType>(name);
+    return NamedDataPool<DataType>::getCref(idx);
   }
 };

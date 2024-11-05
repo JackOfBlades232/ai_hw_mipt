@@ -10,21 +10,20 @@
 static void create_fuzzy_monster_beh(flecs::entity e)
 {
   BehNode *root = utility_selector({std::make_pair(sequence({find_enemy(e, 4.f, "flee_enemy"), flee(e, "flee_enemy")}),
-                                      [](Blackboard &bb) {
+                                      make_utility([](Blackboard &bb) {
                                         const float hp = bb.get<float>("hp");
                                         const float enemyDist = bb.get<float>("enemyDist");
                                         return (100.f - hp) * 5.f - 50.f * enemyDist;
-                                      }),
-    std::make_pair(sequence({find_enemy(e, 3.f, "attack_enemy"), move_to_entity(e, "attack_enemy")}),
-      [](Blackboard &bb) {
-        const float enemyDist = bb.get<float>("enemyDist");
-        return 100.f - 10.f * enemyDist;
-      }),
-    std::make_pair(patrol(e, 2.f, "patrol_pos"), [](Blackboard &) { return 50.f; }),
-    std::make_pair(patch_up(100.f), [](Blackboard &bb) {
+                                      })),
+    std::make_pair(sequence({find_enemy(e, 3.f, "attack_enemy"), move_to_entity(e, "attack_enemy")}), make_utility([](Blackboard &bb) {
+      const float enemyDist = bb.get<float>("enemyDist");
+      return 100.f - 10.f * enemyDist;
+    })),
+    std::make_pair(patrol(e, 2.f, "patrol_pos"), make_utility([](Blackboard &) { return 50.f; })),
+    std::make_pair(patch_up(100.f), make_utility([](Blackboard &bb) {
       const float hp = bb.get<float>("hp");
       return 140.f - hp;
-    })});
+    }))});
   e.add<WorldInfoGatherer>();
   e.set(BehaviourTree{root});
 }
@@ -45,35 +44,53 @@ static void create_guardsman_beh(flecs::entity e)
 
 static void create_explorer_monster_beh(flecs::entity e)
 {
-  // @TODO: utility functions & proper values
-  BehNode *root = utility_selector({std::make_pair(sequence({find_enemy(e, 4.f, "flee_enemy"), flee(e, "flee_enemy")}),
-                                      [](Blackboard &bb) {
-                                        const float hp = bb.get<float>("hp");
-                                        const float enemyDist = bb.get<float>("enemyDist");
-                                        return (100.f - hp) * 5.f - 50.f * enemyDist;
-                                      }),
-    std::make_pair(sequence({find_enemy(e, 3.f, "attack_enemy"), move_to_entity(e, "attack_enemy")}),
-      [](Blackboard &bb) {
-        const float enemyDist = bb.get<float>("enemyDist");
-        return 100.f - 10.f * enemyDist;
-      }),
-    std::make_pair(sequence({find_heal_or_powerup(e, 10.f, "gather_pickup"), move_to_entity(e, "gather_pickup")}),
-      [](Blackboard &) { return 50.f; }),
-    std::make_pair(sequence({find_ally(e, 10.f, "heal_ally"), move_to_entity(e, "heal_ally"), heal_ally(e, 60.f, "heal_ally")}),
-      [](Blackboard &) { return 50.f; }),
-    std::make_pair(sequence({find_ally(e, 10.f, "follow_ally"), move_to_entity(e, "follow_ally")}),
-      [](Blackboard &) { return 50.f; })});
-  e.add<WorldInfoGatherer>();
+  BehNode *root = pure_utility_selector(e,
+    {// flee
+      std::make_pair(flee(e, "target"), make_pure_utility([](Blackboard &bb, const WorldEntSensorInfo &info) {
+        const float hp = bb.get<float>("hp");
+        return info.type == ENT_ENEMY ? (200.f - hp) * 5.f - 50.f * info.dist : -FLT_MAX;
+      })),
+
+      // attack
+      std::make_pair(move_to_entity(e, "target"),
+        make_cd_pure_utility(
+          [](Blackboard &, const WorldEntSensorInfo &info) { return info.type == ENT_ENEMY ? 100.f - 30.f * info.dist : -FLT_MAX; }, 3.f,
+          4.f, e)),
+
+      // pickup hp
+      std::make_pair(move_to_entity(e, "target"), make_pure_utility([](Blackboard &bb, const WorldEntSensorInfo &info) {
+        const float hp = bb.get<float>("hp");
+        return info.type == ENT_HEAL ? (300.f - hp) * info.hpOrAmount * 0.2f - 20.f * info.dist : -FLT_MAX;
+      })),
+
+      // pickup powerup
+      std::make_pair(move_to_entity(e, "target"), make_pure_utility([](Blackboard &, const WorldEntSensorInfo &info) {
+        return info.type == ENT_POWERUP ? info.hpOrAmount * 0.2f - 50.f * info.dist : -FLT_MAX;
+      })),
+
+      // heal ally
+      std::make_pair(sequence({move_to_entity(e, "target"), heal_ally(e, 60.f, "target")}),
+        make_pure_utility([](Blackboard &, const WorldEntSensorInfo &info) {
+          return info.type == ENT_ALLY ? 25.f * (100.f - info.hpOrAmount) - 30.f * info.dist : -FLT_MAX;
+        })),
+
+      // follow ally
+      std::make_pair(move_to_entity(e, "target"), make_pure_utility([](Blackboard &, const WorldEntSensorInfo &info) {
+        return info.type == ENT_ALLY ? 50.f - 10.f * info.dist : -FLT_MAX;
+      }))},
+    "allTargets", "target");
+
+  e.add<WorldPureInfoGatherer>();
   e.set(BehaviourTree{root});
 }
 
-static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color col, const char *texture_src)
+static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color col, const char *texture_src, float hp = 100.f)
 {
   flecs::entity textureSrc = ecs.entity(texture_src);
   return ecs.entity()
     .set(Position{x, y})
     .set(MovePos{x, y})
-    .set(Hitpoints{100.f})
+    .set(Hitpoints{hp})
     .set(Action{EA_NOP})
     .set(Color{col})
     .add<TextureSource>(textureSrc)
@@ -82,6 +99,11 @@ static flecs::entity create_monster(flecs::world &ecs, int x, int y, Color col, 
     .set(NumActions{1, 0})
     .set(MeleeDamage{20.f})
     .set(Blackboard{});
+}
+
+static flecs::entity create_explorer_monster(flecs::world &ecs, int x, int y, Color col, const char *texture_src)
+{
+  return create_monster(ecs, x, y, col, texture_src, 300.f).add<PickupUser>();
 }
 
 static flecs::entity create_gatherer(flecs::world &ecs, int x, int y, Color col, const char *texture_src)
@@ -228,12 +250,14 @@ void init_roguelike(flecs::world &ecs)
   create_fuzzy_monster_beh(create_monster(ecs, 10, -5, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
   create_fuzzy_monster_beh(create_monster(ecs, -5, -5, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex"));
 
+  /*
   create_gatherer_beh(create_gatherer(ecs, -5, 5, Color{0, 255, 0, 255}, "minotaur_tex"));
 
   create_guardsman_beh(create_guardsman(ecs, create_waypoint_loop(ecs, {{6, 6}, {-6, 6}, {-6, -6}, {6, -6}}), 6, -6,
     Color{0, 0, 255, 255}, "minotaur_tex"));
+    */
 
-  create_explorer_monster_beh(create_monster(ecs, 10, 10, Color{0xf1, 0xf1, 0xf1, 0xff}, "minotaur_tex"));
+  create_explorer_monster_beh(create_explorer_monster(ecs, 7, 7, Color{0xf1, 0xf1, 0xf1, 0xff}, "minotaur_tex"));
 
   create_player(ecs, 0, 0, "swordsman_tex");
 
@@ -409,13 +433,17 @@ static void push_info_to_bb(Blackboard &bb, const char *name, const T &val)
 static void gather_world_info(flecs::world &ecs)
 {
   static auto gatherWorldInfo = ecs.query<Blackboard, const Position, const Hitpoints, const WorldInfoGatherer, const Team>();
-  static auto alliesQuery = ecs.query<const Position, const Team>();
+  static auto gatherWorldPureInfo = ecs.query<Blackboard, const Position, const Hitpoints, const WorldPureInfoGatherer, const Team>();
+  static auto actorsQuery = ecs.query<const Position, const Hitpoints, const Team>();
+  static auto healPickupQuery = ecs.query<const Position, const HealAmount>();
+  static auto powerupPickupQuery = ecs.query<const Position, const PowerupAmount>();
+
   gatherWorldInfo.each([&](Blackboard &bb, const Position &pos, const Hitpoints &hp, WorldInfoGatherer, const Team &team) {
     // first gather all needed names (without cache)
     push_info_to_bb(bb, "hp", hp.hitpoints);
     float numAllies = 0; // note float
     float closestEnemyDist = 100.f;
-    alliesQuery.each([&](const Position &apos, const Team &ateam) {
+    actorsQuery.each([&](const Position &apos, Hitpoints, const Team &ateam) {
       constexpr float limitDist = 5.f;
       if (team.team == ateam.team && dist_sq(pos, apos) < sqr(limitDist))
         numAllies += 1.f;
@@ -428,6 +456,28 @@ static void gather_world_info(flecs::world &ecs)
     });
     push_info_to_bb(bb, "alliesNum", numAllies);
     push_info_to_bb(bb, "enemyDist", closestEnemyDist);
+  });
+
+  gatherWorldPureInfo.each([&](flecs::entity ent, Blackboard &bb, const Position &pos, const Hitpoints &hp, WorldPureInfoGatherer,
+                             const Team &team) {
+    std::vector<WorldEntSensorInfo> entInfos{};
+
+    actorsQuery.each([&](flecs::entity aent, const Position &apos, const Hitpoints &ahp, const Team &ateam) {
+      if (aent == ent)
+        return;
+
+      entInfos.emplace_back(ateam.team == team.team ? ENT_ALLY : ENT_ENEMY, dist(pos, apos), ahp.hitpoints, aent);
+    });
+    healPickupQuery.each([&](flecs::entity hent, const Position &hpos, const HealAmount &amt) {
+      entInfos.emplace_back(ENT_HEAL, dist(pos, hpos), amt.amount, hent);
+    });
+    powerupPickupQuery.each([&](flecs::entity pent, const Position &ppos, const PowerupAmount &amt) {
+      entInfos.emplace_back(ENT_POWERUP, dist(pos, ppos), amt.amount, pent);
+    });
+
+    // By copy cause I don't want to rewrite bb stuff for rvals
+    push_info_to_bb(bb, "hp", hp.hitpoints);
+    push_info_to_bb(bb, "allTargets", entInfos);
   });
 }
 
