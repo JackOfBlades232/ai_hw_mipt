@@ -21,7 +21,7 @@ int main(int /*argc*/, const char ** /*argv*/)
 {
   int width = 1920;
   int height = 1080;
-  InitWindow(width, height, "w3 AI MIPT");
+  InitWindow(width, height, "hw4 AI MIPT");
 
   const int scrWidth = GetMonitorWidth(0);
   const int scrHeight = GetMonitorHeight(0);

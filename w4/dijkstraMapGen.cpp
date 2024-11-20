@@ -66,30 +66,25 @@ static void process_dmap(std::vector<float> &map, const DungeonData &dd)
   }
 }
 
-void dmaps::gen_player_approach_map(flecs::world &ecs, std::vector<float> &map)
+void dmaps::gen_adversary_approach_map(flecs::world &ecs, std::vector<float> &map, int my_team)
 {
-  query_dungeon_data(ecs, [&](const DungeonData &dd)
-  {
+  query_dungeon_data(ecs, [&](const DungeonData &dd) {
     init_tiles(map, dd);
-    query_characters_positions(ecs, [&](const Position &pos, const Team &t)
-    {
-      if (t.team == 0) // player team hardcode
+    query_characters_positions(ecs, [&](const Position &pos, const Team &t) {
+      if (t.team != my_team)
         map[pos.y * dd.width + pos.x] = 0.f;
     });
     process_dmap(map, dd);
   });
 }
 
-void dmaps::gen_player_flee_map(flecs::world &ecs, std::vector<float> &map)
+void dmaps::gen_adversary_flee_map(flecs::world &ecs, std::vector<float> &map, int my_team)
 {
-  gen_player_approach_map(ecs, map);
+  gen_adversary_approach_map(ecs, map, my_team);
   for (float &v : map)
     if (v < invalid_tile_value)
       v *= -1.2f;
-  query_dungeon_data(ecs, [&](const DungeonData &dd)
-  {
-    process_dmap(map, dd);
-  });
+  query_dungeon_data(ecs, [&](const DungeonData &dd) { process_dmap(map, dd); });
 }
 
 void dmaps::gen_hive_pack_map(flecs::world &ecs, std::vector<float> &map)

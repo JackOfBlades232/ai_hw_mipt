@@ -9,27 +9,41 @@
 #include "dijkstraMapGen.h"
 #include "dmapFollower.h"
 
-static flecs::entity create_player_approacher(flecs::entity e)
+enum GameTeam : int
 {
-  e.set(DmapWeights{{{"approach_map", {1.f, 1.f}}}});
+  TEAM_PLAYER = 0,
+  TEAM_ORCS = 1,
+  TEAM_HIVE = 2,
+};
+
+static constexpr GameTeam enemy_teams[] = {TEAM_ORCS, TEAM_HIVE};
+
+static int get_team(flecs::entity e)
+{
+  int res;
+  e.get([&](const Team &team) { res = team.team; });
+  return res;
+}
+
+// Common
+static flecs::entity create_adversary_approacher(flecs::entity e)
+{
+  e.set(DmapWeights{{{dmaps::gen_name("approach_map", get_team(e)), {1.f, 1.f}}}});
   return e;
 }
 
-static flecs::entity create_player_fleer(flecs::entity e)
+static flecs::entity create_adversary_fleer(flecs::entity e)
 {
-  e.set(DmapWeights{{{"flee_map", {1.f, 1.f}}}});
+  e.set(DmapWeights{{{dmaps::gen_name("flee_map", get_team(e)), {1.f, 1.f}}}});
   return e;
 }
 
-static flecs::entity create_hive_follower(flecs::entity e)
-{
-  e.set(DmapWeights{{{"hive_map", {1.f, 1.f}}}});
-  return e;
-}
-
+// Hive
 static flecs::entity create_hive_monster(flecs::entity e)
 {
-  e.set(DmapWeights{{{"hive_map", {1.f, 1.f}}, {"approach_map", {1.8, 0.8f}}}});
+  auto hiveName = dmaps::gen_name("hive_map", get_team(e));
+  auto approachName = dmaps::gen_name("approach_map", get_team(e));
+  e.set(DmapWeights{{{hiveName, {1.f, 1.f}}, {approachName, {1.8, 0.8f}}}});
   return e;
 }
 
@@ -37,74 +51,6 @@ static flecs::entity create_hive(flecs::entity e)
 {
   e.add<Hive>();
   return e;
-}
-
-
-static void create_fuzzy_monster_beh(flecs::entity e)
-{
-  e.set(Blackboard{});
-  BehNode *root =
-    utility_selector({
-      std::make_pair(
-        sequence({
-          find_enemy(e, 4.f, "flee_enemy"),
-          flee(e, "flee_enemy")
-        }),
-        [](Blackboard &bb)
-        {
-          const float hp = bb.get<float>("hp");
-          const float enemyDist = bb.get<float>("enemyDist");
-          return (100.f - hp) * 5.f - 50.f * enemyDist;
-        }
-      ),
-      std::make_pair(
-        sequence({
-          find_enemy(e, 3.f, "attack_enemy"),
-          move_to_entity(e, "attack_enemy")
-        }),
-        [](Blackboard &bb)
-        {
-          const float enemyDist = bb.get<float>("enemyDist");
-          return 100.f - 10.f * enemyDist;
-        }
-      ),
-      std::make_pair(
-        patrol(e, 2.f, "patrol_pos"),
-        [](Blackboard &)
-        {
-          return 50.f;
-        }
-      ),
-      std::make_pair(
-        patch_up(100.f),
-        [](Blackboard &bb)
-        {
-          const float hp = bb.get<float>("hp");
-          return 140.f - hp;
-        }
-      )
-    });
-  e.add<WorldInfoGatherer>();
-  e.set(BehaviourTree{root});
-}
-
-static void create_minotaur_beh(flecs::entity e)
-{
-  e.set(Blackboard{});
-  BehNode *root =
-    selector({
-      sequence({
-        is_low_hp(50.f),
-        find_enemy(e, 4.f, "flee_enemy"),
-        flee(e, "flee_enemy")
-      }),
-      sequence({
-        find_enemy(e, 3.f, "attack_enemy"),
-        move_to_entity(e, "attack_enemy")
-      }),
-      patrol(e, 2.f, "patrol_pos")
-    });
-  e.set(BehaviourTree{root});
 }
 
 static Position find_free_dungeon_tile(flecs::world &ecs)
@@ -126,7 +72,7 @@ static Position find_free_dungeon_tile(flecs::world &ecs)
   return {0, 0};
 }
 
-static flecs::entity create_monster(flecs::world &ecs, Color col, const char *texture_src)
+static flecs::entity create_monster(flecs::world &ecs, Color col, const char *texture_src, GameTeam team)
 {
   Position pos = find_free_dungeon_tile(ecs);
 
@@ -139,7 +85,7 @@ static flecs::entity create_monster(flecs::world &ecs, Color col, const char *te
     .set(Color{col})
     .add<TextureSource>(textureSrc)
     .set(StateMachine{})
-    .set(Team{1})
+    .set(Team{team})
     .set(NumActions{1, 0})
     .set(MeleeDamage{20.f})
     .set(Blackboard{});
@@ -157,7 +103,7 @@ static void create_player(flecs::world &ecs, const char *texture_src)
     //.set(Color{0xee, 0xee, 0xee, 0xff})
     .set(Action{EA_NOP})
     .add<IsPlayer>()
-    .set(Team{0})
+    .set(Team{TEAM_PLAYER})
     .set(PlayerInput{})
     .set(NumActions{2, 0})
     .set(Color{255, 255, 255, 255})
@@ -316,10 +262,17 @@ void init_roguelike(flecs::world &ecs)
         UnloadTexture(texture);
       });
 
-  create_hive_monster(create_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
-  create_hive_monster(create_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex"));
-  create_hive_monster(create_monster(ecs, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex"));
-  create_hive(create_player_fleer(create_monster(ecs, Color{0, 255, 0, 255}, "minotaur_tex")));
+  // Orcs
+  create_adversary_approacher(create_monster(ecs, Color{0x00, 0xee, 0x00, 0xff}, "minotaur_tex", TEAM_ORCS));
+  create_adversary_approacher(create_monster(ecs, Color{0x00, 0xee, 0x00, 0xff}, "minotaur_tex", TEAM_ORCS));
+  create_adversary_approacher(create_monster(ecs, Color{0x00, 0xee, 0x00, 0xff}, "minotaur_tex", TEAM_ORCS));
+  create_adversary_approacher(create_monster(ecs, Color{0x00, 0xee, 0x00, 0xff}, "minotaur_tex", TEAM_ORCS));
+
+  // Hive
+  create_hive_monster(create_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex", TEAM_HIVE));
+  create_hive_monster(create_monster(ecs, Color{0xee, 0x00, 0xee, 0xff}, "minotaur_tex", TEAM_HIVE));
+  create_hive_monster(create_monster(ecs, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex", TEAM_HIVE));
+  create_hive(create_adversary_fleer(create_monster(ecs, Color{0, 255, 0, 255}, "minotaur_tex", TEAM_HIVE)));
 
   create_player(ecs, "swordsman_tex");
 
@@ -555,25 +508,32 @@ void process_turn(flecs::world &ecs)
     }
     process_actions(ecs);
 
-    std::vector<float> approachMap;
-    dmaps::gen_player_approach_map(ecs, approachMap);
-    ecs.entity("approach_map")
-      .set(DijkstraMapData{approachMap});
+    std::unordered_map<std::string, DmapWeights::WtData> dmapWeights{};
 
-    std::vector<float> fleeMap;
-    dmaps::gen_player_flee_map(ecs, fleeMap);
-    ecs.entity("flee_map")
-      .set(DijkstraMapData{fleeMap});
+    for (GameTeam team : enemy_teams)
+    {
+      std::vector<float> approachMap;
+      dmaps::gen_adversary_approach_map(ecs, approachMap, team);
+      ecs.entity(dmaps::gen_name("approach_map", team).c_str()).set(DijkstraMapData{approachMap});
 
-    std::vector<float> hiveMap;
-    dmaps::gen_hive_pack_map(ecs, hiveMap);
-    ecs.entity("hive_map")
-      .set(DijkstraMapData{hiveMap});
+      dmapWeights.emplace(dmaps::gen_name("approach_map", team), DmapWeights::WtData{1.8f, 0.8f});
 
-    //ecs.entity("flee_map").add<VisualiseMap>();
+      std::vector<float> fleeMap;
+      dmaps::gen_adversary_flee_map(ecs, fleeMap, team);
+      ecs.entity(dmaps::gen_name("flee_map", team).c_str()).set(DijkstraMapData{fleeMap});
+
+      if (team == TEAM_HIVE)
+      {
+        std::vector<float> hiveMap;
+        dmaps::gen_hive_pack_map(ecs, hiveMap);
+        ecs.entity(dmaps::gen_name("hive_map", team).c_str()).set(DijkstraMapData{hiveMap});
+
+        dmapWeights.emplace(dmaps::gen_name("hive_map", team), DmapWeights::WtData{1.f, 1.f});
+      }
+    }
+
     ecs.entity("hive_follower_sum")
-      //.set(DmapWeights{{{"flee_map", {1.f, 1.f}}}})
-      .set(DmapWeights{{{"hive_map", {1.f, 1.f}}, {"approach_map", {1.8f, 0.8f}}}})
+      .set(DmapWeights{std::move(dmapWeights)})
       .add<VisualiseMap>();
   }
 }
