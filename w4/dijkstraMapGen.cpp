@@ -1,6 +1,10 @@
 #include "dijkstraMapGen.h"
 #include "ecsTypes.h"
 #include "dungeonUtils.h"
+#include "math.h"
+
+#include <cfloat>
+#include <cmath>
 
 template<typename Callable>
 static void query_dungeon_data(flecs::world &ecs, Callable c)
@@ -19,6 +23,7 @@ static void query_characters_positions(flecs::world &ecs, Callable c)
 }
 
 constexpr float invalid_tile_value = 1e5f;
+constexpr float very_invalid_tile_value = 1e10f;
 
 static void init_tiles(std::vector<float> &map, const DungeonData &dd)
 {
@@ -73,6 +78,30 @@ void dmaps::gen_adversary_approach_map(flecs::world &ecs, std::vector<float> &ma
     query_characters_positions(ecs, [&](const Position &pos, const Team &t) {
       if (t.team != my_team)
         map[pos.y * dd.width + pos.x] = 0.f;
+    });
+    process_dmap(map, dd);
+  });
+}
+
+void dmaps::gen_adversary_go_to_range_map(flecs::world &ecs, std::vector<float> &map, int my_team, float d, float in_d)
+{
+  query_dungeon_data(ecs, [&](const DungeonData &dd) {
+    init_tiles(map, dd);
+    query_characters_positions(ecs, [&](const Position &pos, const Team &t) {
+      if (t.team != my_team)
+      { 
+        // We are ok with getting to any square close to an enemy, but not too close
+        for (int y = pos.y - ceilf(d); y < pos.y + ceilf(d); ++y)
+          for (int x = pos.x - ceilf(d); x < pos.x + ceilf(d); ++x) {
+            if (x < 0 || y < 0 || x >= (int)dd.width - 1 || y >= (int)dd.height - 1)
+              continue;
+
+            if (dist(pos, Position{x, y}) <= in_d)
+              map[y * dd.width + x] = very_invalid_tile_value;
+            else if (map[y * dd.width + x] == invalid_tile_value && dist(pos, Position{x, y}) <= d)
+              map[y * dd.width + x] = 0.f;
+          }
+      }
     });
     process_dmap(map, dd);
   });

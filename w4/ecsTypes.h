@@ -92,6 +92,11 @@ struct MeleeDamage
   float damage = 2.f;
 };
 
+struct RangedDamage
+{
+  float damage = 1.f;
+};
+
 struct HealAmount
 {
   float amount = 0.f;
