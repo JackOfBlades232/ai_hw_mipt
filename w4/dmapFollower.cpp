@@ -4,7 +4,7 @@
 
 void process_dmap_followers(flecs::world &ecs)
 {
-  static auto processDmapFollowers = ecs.query<const Position, Action, const DmapWeights>();
+  static auto processDmapFollowers = ecs.query<const Position, Action, const DmapWeights, const Autopilot *>();
   static auto dungeonDataQuery = ecs.query<const DungeonData>();
 
   auto get_dmap_at = [&](const DijkstraMapData &dmap, const DungeonData &dd, size_t x, size_t y, float mult, float pow)
@@ -16,8 +16,11 @@ void process_dmap_followers(flecs::world &ecs)
   };
   dungeonDataQuery.each([&](const DungeonData &dd)
   {
-    processDmapFollowers.each([&](const Position &pos, Action &act, const DmapWeights &wt)
+    processDmapFollowers.each([&](const Position &pos, Action &act, const DmapWeights &wt, const Autopilot *opt_autop)
     {
+      if (opt_autop && !opt_autop->enabled)
+        return;
+
       float moveWeights[EA_MOVE_END];
       for (size_t i = 0; i < EA_MOVE_END; ++i)
         moveWeights[i] = 0.f;

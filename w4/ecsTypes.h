@@ -122,6 +122,10 @@ struct Symbol
 };
 
 struct IsPlayer {};
+struct Autopilot
+{
+  bool enabled;
+};
 
 struct WorldInfoGatherer {};
 
@@ -157,6 +161,11 @@ struct DijkstraMapData
   std::vector<float> map;
 };
 
+struct ExplorationMapData
+{
+  std::vector<bool> map; // Goddamn bool vector lulz))
+};
+
 struct VisualiseMap {};
 
 struct DmapWeights
@@ -170,3 +179,5 @@ struct DmapWeights
 };
 
 struct Hive {};
+
+struct MapExplorer{};

@@ -20,6 +20,7 @@ enum GameTeam : int
 static constexpr GameTeam ENEMY_TEAMS[] = {TEAM_ORCS, TEAM_HIVE};
 
 constexpr float SHOT_DISTANCE = 6.f;
+constexpr float EXPLORATION_DIST = 8.f;
 
 static int get_team(flecs::entity e)
 {
@@ -53,6 +54,15 @@ static flecs::entity create_hive_monster(flecs::entity e)
   auto hiveName = dmaps::gen_name("hive_map", get_team(e));
   auto approachName = dmaps::gen_name("approach_map", get_team(e));
   e.set(DmapWeights{{{hiveName, {1.f, 1.f}}, {approachName, {1.8, 0.8f}}}});
+  return e;
+}
+
+// Peaceful
+static flecs::entity create_map_explorer(flecs::entity e)
+{
+  e.add<MapExplorer>();
+  e.set(DmapWeights{{{"exploration_map", {2.6f, 2.6f}}, {dmaps::gen_name("approach_map", get_team(e)), {1.f, 1.f}},
+    {dmaps::gen_name("flee_map", get_team(e)), {1.f, 1.f}}}});
   return e;
 }
 
@@ -98,16 +108,16 @@ static flecs::entity create_monster(flecs::world &ecs, Color col, const char *te
              .set(MeleeDamage{20.f})
              .set(Blackboard{});
   if (ranged)
-    e.set(RangedDamage{4.f});
+    e.set(RangedDamage{2.5f});
   return e;
 }
 
-static void create_player(flecs::world &ecs, const char *texture_src)
+static flecs::entity create_player(flecs::world &ecs, const char *texture_src)
 {
   Position pos = find_free_dungeon_tile(ecs);
 
   flecs::entity textureSrc = ecs.entity(texture_src);
-  ecs.entity("player")
+  return ecs.entity("player")
     .set(Position{pos.x, pos.y})
     .set(MovePos{pos.x, pos.y})
     .set(Hitpoints{100.f})
@@ -119,13 +129,17 @@ static void create_player(flecs::world &ecs, const char *texture_src)
     .set(NumActions{2, 0})
     .set(Color{255, 255, 255, 255})
     .add<TextureSource>(textureSrc)
+    .set(Autopilot{true})
     .set(MeleeDamage{20.f});
 }
 
 static void register_roguelike_systems(flecs::world &ecs)
 {
   static auto dungeonDataQuery = ecs.query<const DungeonData>();
-  ecs.system<PlayerInput, Action, const IsPlayer>().each([&](PlayerInput &inp, Action &a, const IsPlayer) {
+  static auto expDataQuery = ecs.query<const ExplorationMapData>();
+  ecs.system<PlayerInput, Action, const IsPlayer, const Autopilot *>().each([&](PlayerInput &inp, Action &a, const IsPlayer, const Autopilot *autop) {
+    if (autop && autop->enabled)
+      return;
     bool left = IsKeyDown(KEY_LEFT);
     bool right = IsKeyDown(KEY_RIGHT);
     bool up = IsKeyDown(KEY_UP);
@@ -148,13 +162,26 @@ static void register_roguelike_systems(flecs::world &ecs)
       a.action = EA_PASS;
     inp.passed = pass;
   });
+  ecs.system<const PlayerInput, Autopilot>().each([&](const PlayerInput &, Autopilot &autop) {
+    if (IsKeyDown(KEY_A))
+      autop.enabled = !autop.enabled;
+  });
   ecs.system<const Position, const Color>()
     .with<TextureSource>(flecs::Wildcard)
     .with<BackgroundTile>()
     .each([&](flecs::entity e, const Position &pos, const Color color) {
       const auto textureSrc = e.target<TextureSource>();
+      bool discard = false;
+      int w, h;
+      dungeonDataQuery.each([&](const DungeonData &dd) {
+        w = dd.width;
+        h = dd.height;
+      });
+      expDataQuery.each([&](const ExplorationMapData &data) { discard = !data.map[pos.y * w + pos.x]; });
+      unsigned char div = discard ? 3 : 1;
+      Color c{(unsigned char)(color.r / div), (unsigned char)(color.g / div), (unsigned char)(color.b / div), color.a};
       DrawTextureQuad(*textureSrc.get<Texture2D>(), Vector2{1, 1}, Vector2{0, 0},
-        Rectangle{float(pos.x) * tile_size, float(pos.y) * tile_size, tile_size, tile_size}, color);
+        Rectangle{float(pos.x) * tile_size, float(pos.y) * tile_size, tile_size, tile_size}, c);
     });
   ecs.system<const Position, const Color>().without<TextureSource>(flecs::Wildcard).each([&](const Position &pos, const Color color) {
     const Rectangle rect = {float(pos.x) * tile_size, float(pos.y) * tile_size, tile_size, tile_size};
@@ -239,7 +266,8 @@ void init_roguelike(flecs::world &ecs)
   create_hive_monster(create_monster(ecs, Color{0x11, 0x11, 0x11, 0xff}, "minotaur_tex", TEAM_HIVE));
   create_hive(create_adversary_fleer(create_monster(ecs, Color{0, 255, 0, 255}, "minotaur_tex", TEAM_HIVE)));
 
-  create_player(ecs, "swordsman_tex");
+  // Player
+  create_map_explorer(create_player(ecs, "swordsman_tex"));
 
   ecs.entity("world").set(TurnCounter{}).set(ActionLog{});
 }
@@ -250,11 +278,17 @@ void init_dungeon(flecs::world &ecs, char *tiles, size_t w, size_t h)
   flecs::entity floorTex = ecs.entity("floor_tex").set(Texture2D{LoadTexture("assets/floor.png")});
 
   std::vector<char> dungeonData;
+  std::vector<bool> expData;
   dungeonData.resize(w * h);
+  expData.resize(w * h);
   for (size_t y = 0; y < h; ++y)
     for (size_t x = 0; x < w; ++x)
+    {
       dungeonData[y * w + x] = tiles[y * w + x];
+      expData[y * w + x] = false;
+    }
   ecs.entity("dungeon").set(DungeonData{dungeonData, w, h});
+  ecs.entity("exploration").set(ExplorationMapData{std::move(expData)});
 
   for (size_t y = 0; y < h; ++y)
     for (size_t x = 0; x < w; ++x)
@@ -272,8 +306,14 @@ void init_dungeon(flecs::world &ecs, char *tiles, size_t w, size_t h)
 static bool is_player_acted(flecs::world &ecs)
 {
   static auto processPlayer = ecs.query<const IsPlayer, const Action>();
+  static auto processPlayerAutopilot = ecs.query<const IsPlayer, const Autopilot>();
   bool playerActed = false;
   processPlayer.each([&](const IsPlayer, const Action &a) { playerActed = a.action != EA_NOP; });
+  processPlayerAutopilot.each([&](const IsPlayer, const Autopilot &a) {
+    static int frames = 0;
+    if (!playerActed && (++frames) % 12 == 0)
+      playerActed = a.enabled;
+  });
   return playerActed;
 }
 
@@ -432,6 +472,7 @@ void process_turn(flecs::world &ecs)
   static auto stateMachineAct = ecs.query<StateMachine>();
   static auto behTreeUpdate = ecs.query<BehaviourTree, Blackboard>();
   static auto turnIncrementer = ecs.query<TurnCounter>();
+
   if (is_player_acted(ecs))
   {
     if (upd_player_actions_count(ecs))
@@ -446,6 +487,29 @@ void process_turn(flecs::world &ecs)
       turnIncrementer.each([](TurnCounter &tc) { tc.count++; });
     }
     process_actions(ecs);
+
+    static auto explorers = ecs.query<const MapExplorer, const Position>();
+    static auto ddata = ecs.query<const DungeonData>();
+    int w, h;
+    ddata.each([&](const DungeonData &dd) {
+      w = dd.width;
+      h = dd.height;
+    });
+    static auto exp = ecs.query<ExplorationMapData>();
+    exp.each([&](ExplorationMapData &data) {
+      explorers.each([&](const MapExplorer &, const Position &pos) {
+        for (int y = pos.y - ceilf(EXPLORATION_DIST); y < pos.y + ceilf(EXPLORATION_DIST); ++y)
+          for (int x = pos.x - ceilf(EXPLORATION_DIST); x < pos.x + ceilf(EXPLORATION_DIST); ++x)
+          {
+            if (dist(pos, Position{x, y}) <= EXPLORATION_DIST && x >= 0 && y >= 0 && x <= w && y <= h)
+              data.map[y * w + x] = true;
+          }
+      });
+    });
+
+    std::vector<float> expMap;
+    dmaps::gen_exploration_map(ecs, expMap);
+    ecs.entity("exploration_map").set(DijkstraMapData{expMap});
 
     for (GameTeam team : ENEMY_TEAMS)
     {
@@ -469,7 +533,7 @@ void process_turn(flecs::world &ecs)
       }
     }
 
-    ecs.entity("hive_follower_sum").set(DmapWeights{{{dmaps::gen_name("range_map", TEAM_ORCS), {1.f, 1.f}}}}).add<VisualiseMap>();
+    //ecs.entity("hive_follower_sum").set(DmapWeights{{{"exploration_map", {1.f, 1.f}}}}).add<VisualiseMap>();
   }
 }
 
@@ -490,4 +554,9 @@ void print_stats(flecs::world &ecs)
       yPos -= 20;
     }
   });
+
+  static auto playerAutopilot = ecs.query<const IsPlayer, const Autopilot>();
+  bool enabled;
+  playerAutopilot.each([&](const IsPlayer, const Autopilot &a) { enabled = a.enabled; });
+  DrawText(TextFormat("Autopilot is %s, A to switch", enabled ? "enabled" : "disabled"), 1500, 30, 20, WHITE);
 }

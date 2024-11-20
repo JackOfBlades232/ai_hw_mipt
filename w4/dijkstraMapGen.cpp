@@ -5,8 +5,9 @@
 
 #include <cfloat>
 #include <cmath>
+#include <cassert>
 
-template<typename Callable>
+template <typename Callable>
 static void query_dungeon_data(flecs::world &ecs, Callable c)
 {
   static auto dungeonDataQuery = ecs.query<const DungeonData>();
@@ -14,7 +15,7 @@ static void query_dungeon_data(flecs::world &ecs, Callable c)
   dungeonDataQuery.each(c);
 }
 
-template<typename Callable>
+template <typename Callable>
 static void query_characters_positions(flecs::world &ecs, Callable c)
 {
   static auto characterPositionQuery = ecs.query<const Position, const Team>();
@@ -36,14 +37,12 @@ static void init_tiles(std::vector<float> &map, const DungeonData &dd)
 static void process_dmap(std::vector<float> &map, const DungeonData &dd)
 {
   bool done = false;
-  auto getMapAt = [&](size_t x, size_t y, float def)
-  {
+  auto getMapAt = [&](size_t x, size_t y, float def) {
     if (x < dd.width && y < dd.width && dd.tiles[y * dd.width + x] == dungeon::floor)
       return map[y * dd.width + x];
     return def;
   };
-  auto getMinNei = [&](size_t x, size_t y)
-  {
+  auto getMinNei = [&](size_t x, size_t y) {
     float val = map[y * dd.width + x];
     val = std::min(val, getMapAt(x - 1, y + 0, val));
     val = std::min(val, getMapAt(x + 1, y + 0, val));
@@ -89,11 +88,12 @@ void dmaps::gen_adversary_go_to_range_map(flecs::world &ecs, std::vector<float> 
     init_tiles(map, dd);
     query_characters_positions(ecs, [&](const Position &pos, const Team &t) {
       if (t.team != my_team)
-      { 
+      {
         // We are ok with getting to any square close to an enemy, but not too close
         for (int y = pos.y - ceilf(d); y < pos.y + ceilf(d); ++y)
-          for (int x = pos.x - ceilf(d); x < pos.x + ceilf(d); ++x) {
-            if (x < 0 || y < 0 || x >= (int)dd.width - 1 || y >= (int)dd.height - 1)
+          for (int x = pos.x - ceilf(d); x < pos.x + ceilf(d); ++x)
+          {
+            if (x < 0 || y < 0 || x >= (int)dd.width || y >= (int)dd.height)
               continue;
 
             if (dist(pos, Position{x, y}) <= in_d)
@@ -119,14 +119,27 @@ void dmaps::gen_adversary_flee_map(flecs::world &ecs, std::vector<float> &map, i
 void dmaps::gen_hive_pack_map(flecs::world &ecs, std::vector<float> &map)
 {
   static auto hiveQuery = ecs.query<const Position, const Hive>();
-  query_dungeon_data(ecs, [&](const DungeonData &dd)
-  {
+  query_dungeon_data(ecs, [&](const DungeonData &dd) {
     init_tiles(map, dd);
-    hiveQuery.each([&](const Position &pos, const Hive &)
-    {
-      map[pos.y * dd.width + pos.x] = 0.f;
-    });
+    hiveQuery.each([&](const Position &pos, const Hive &) { map[pos.y * dd.width + pos.x] = 0.f; });
     process_dmap(map, dd);
   });
 }
 
+void dmaps::gen_exploration_map(flecs::world &ecs, std::vector<float> &map)
+{
+  static auto expQuery = ecs.query<const ExplorationMapData>();
+  query_dungeon_data(ecs, [&](const DungeonData &dd) {
+    init_tiles(map, dd);
+    expQuery.each([&](const ExplorationMapData &data) {
+      assert(map.size() == data.map.size());
+      for (size_t i = 0; i < map.size(); ++i)
+      {
+        // Wanna explore unexplored things
+        if (!data.map[i])
+          map[i] = 0.f;
+      }
+    });
+    process_dmap(map, dd);
+  });
+}
