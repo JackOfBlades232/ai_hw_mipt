@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include <ios>
 #include <vector>
 #include <limits>
 #include <float.h>
@@ -9,10 +10,23 @@
 #include "dungeonGen.h"
 #include "dungeonUtils.h"
 
+enum class AlgoStar {
+  WA,
+  AWA
+};
+
+static constexpr int AWA_STAR_MAX_HITS = 8;
+
 template <typename T>
 static size_t coord_to_idx(T x, T y, size_t w)
 {
   return size_t(y) * w + size_t(x);
+}
+
+template <typename T>
+static T idx_to_coord(size_t idx, size_t w)
+{
+  return T{(decltype(T{}.x))(idx % w), (decltype(T{}.y))(idx / w)};
 }
 
 static void draw_nav_grid(const char *input, size_t width, size_t height)
@@ -112,7 +126,8 @@ static std::vector<Position> find_ida_star_path(const char *input, size_t width,
 }
 */
 
-static std::vector<Position> find_path_a_star(const char *input, size_t width, size_t height, Position from, Position to, float weight)
+static std::vector<Position> find_path_wa_star(const char *input, size_t width, size_t height, Position from, Position to,
+  float weight)
 {
   if (from.x < 0 || from.y < 0 || from.x >= int(width) || from.y >= int(height))
     return std::vector<Position>();
@@ -151,8 +166,10 @@ static std::vector<Position> find_path_a_star(const char *input, size_t width, s
     if (std::find(closedList.begin(), closedList.end(), curPos) != closedList.end())
       continue;
     size_t idx = coord_to_idx(curPos.x, curPos.y, width);
+
     const Rectangle rect = {float(curPos.x), float(curPos.y), 1.f, 1.f};
     DrawRectangleRec(rect, Color{uint8_t(g[idx]), uint8_t(g[idx]), 0, 100});
+
     closedList.emplace_back(curPos);
     auto checkNeighbour = [&](Position p) {
       // out of bounds
@@ -183,10 +200,132 @@ static std::vector<Position> find_path_a_star(const char *input, size_t width, s
   return std::vector<Position>();
 }
 
-void draw_nav_data(const char *input, size_t width, size_t height, Position from, Position to, float weight)
+static std::vector<Position> find_path_awa_star(const char *input, size_t width, size_t height, Position from, Position to,
+  float weight)
+{
+  if (from.x < 0 || from.y < 0 || from.x >= int(width) || from.y >= int(height))
+    return std::vector<Position>();
+  if (input[coord_to_idx(from.x, from.y, width)] == '#')
+    return std::vector<Position>();
+  if (to.x < 0 || to.y < 0 || to.x >= int(width) || to.y >= int(height))
+    return std::vector<Position>();
+  if (input[coord_to_idx(to.x, to.y, width)] == '#')
+    return std::vector<Position>();
+  size_t inpSize = width * height;
+
+  std::vector<float> g(inpSize, std::numeric_limits<float>::max());
+  std::vector<float> f(inpSize, std::numeric_limits<float>::max());
+  std::vector<float> fw(inpSize, std::numeric_limits<float>::max());
+  std::vector<Position> prev(inpSize, {-1, -1});
+
+  auto getG = [&](Position p) -> float { return g[coord_to_idx(p.x, p.y, width)]; };
+  auto getF = [&](Position p) -> float { return f[coord_to_idx(p.x, p.y, width)]; };
+  auto getFW = [&](Position p) -> float { return fw[coord_to_idx(p.x, p.y, width)]; };
+
+  g[coord_to_idx(from.x, from.y, width)] = 0;
+  f[coord_to_idx(from.x, from.y, width)] = heuristic(from, to);
+  fw[coord_to_idx(from.x, from.y, width)] = weight * heuristic(from, to);
+  ssize_t incumbent = -1;
+
+  size_t hits = 0;
+
+  std::vector<Position> openList = {from};
+  std::vector<Position> closedList;
+
+  while (!openList.empty())
+  {
+    size_t bestIdx = 0;
+    float bestScore = getFW(openList[0]);
+    for (size_t i = 1; i < openList.size(); ++i)
+    {
+      float score = getFW(openList[i]);
+      if (score < bestScore)
+      {
+        bestIdx = i;
+        bestScore = score;
+      }
+    }
+
+    Position curPos = openList[bestIdx];
+    openList.erase(openList.begin() + bestIdx);
+
+    Position incPos = incumbent == -1 ? Position{} : idx_to_coord<Position>(incumbent, width);
+
+    if (incumbent == -1 || getF(curPos) < getF(incPos)) {
+      if (std::find(closedList.begin(), closedList.end(), curPos) == closedList.end())
+        closedList.emplace_back(curPos);
+
+      size_t idx = coord_to_idx(curPos.x, curPos.y, width);
+      const Rectangle rect = {float(curPos.x), float(curPos.y), 1.f, 1.f};
+      DrawRectangleRec(rect, Color{uint8_t(g[idx]), uint8_t(g[idx]), 0, 100});
+
+      auto checkNeighbour = [&](Position p) {
+        // out of bounds
+        if (p.x < 0 || p.y < 0 || p.x >= int(width) || p.y >= int(height))
+          return;
+        size_t idx = coord_to_idx(p.x, p.y, width);
+        // not empty
+        if (input[idx] == '#')
+          return;
+        float edgeWeight = input[idx] == 'o' ? 10.f : 1.f;
+        float gScore = getG(curPos) + 1.f * edgeWeight; // we're exactly 1 unit away
+        if (incumbent != -1 && gScore + heuristic(p, to) >= getF(incPos))
+          return;
+
+        if (p == to) {
+          f[idx] = g[idx] = fw[idx] = gScore;
+          prev[idx] = curPos;
+          incumbent = idx;
+          ++hits;
+          return;
+        }
+
+        auto itOpen = std::find(openList.begin(), openList.end(), p);
+        auto itClosed = std::find(closedList.begin(), closedList.end(), p);
+        bool inOpen = itOpen != openList.end();
+        bool inClosed = itClosed != closedList.end();
+
+        if ((inOpen || inClosed) && g[idx] > gScore) {
+          g[idx] = gScore;
+          f[idx] = gScore + heuristic(p, to);
+          fw[idx] = gScore + weight * heuristic(p, to);
+          prev[idx] = curPos;
+          if (inClosed) {
+            if (!inOpen)
+              openList.emplace_back(p);
+            closedList.erase(itClosed);
+          }
+        } else if (!inOpen && !inClosed) {
+          g[idx] = gScore;
+          f[idx] = gScore + heuristic(p, to);
+          fw[idx] = gScore + weight * heuristic(p, to);
+          prev[idx] = curPos;
+          openList.emplace_back(p);
+        }
+      };
+
+      checkNeighbour({curPos.x + 1, curPos.y + 0});
+      checkNeighbour({curPos.x - 1, curPos.y + 0});
+      checkNeighbour({curPos.x + 0, curPos.y + 1});
+      checkNeighbour({curPos.x + 0, curPos.y - 1});
+    }
+
+    if (hits >= AWA_STAR_MAX_HITS)
+      break;
+  }
+  // empty path
+  return hits > 0 ? reconstruct_path(prev, to, width) : std::vector<Position>{};
+}
+
+void draw_nav_data(const char *input, size_t width, size_t height, Position from, Position to, AlgoStar algo, float weight)
 {
   draw_nav_grid(input, width, height);
-  std::vector<Position> path = find_path_a_star(input, width, height, from, to, weight);
+  std::vector<Position> path;
+  switch (algo)
+  {
+    case AlgoStar::WA: path = find_path_wa_star(input, width, height, from, to, weight); break;
+    case AlgoStar::AWA: path = find_path_awa_star(input, width, height, from, to, weight); break;
+  }
   draw_path(path);
 }
 
@@ -258,10 +397,14 @@ int main(int /*argc*/, const char ** /*argv*/)
       printf("new weight %f\n", weight);
     }
     BeginDrawing();
-    ClearBackground(BLACK);
-    BeginMode2D(camera);
-    draw_nav_data(navGrid, dungWidth, dungHeight, from, to, weight);
-    EndMode2D();
+    {
+      ClearBackground(BLACK);
+      BeginMode2D(camera);
+      {
+        draw_nav_data(navGrid, dungWidth, dungHeight, from, to, AlgoStar::AWA, weight);
+      }
+      EndMode2D();
+    }
     EndDrawing();
   }
   CloseWindow();
