@@ -1,5 +1,4 @@
 #include "raylib.h"
-#include <functional>
 #include <vector>
 #include <limits>
 #include <float.h>
@@ -10,7 +9,7 @@
 #include "dungeonGen.h"
 #include "dungeonUtils.h"
 
-template<typename T>
+template <typename T>
 static size_t coord_to_idx(T x, T y, size_t w)
 {
   return size_t(y) * w + size_t(x);
@@ -25,7 +24,6 @@ static void draw_nav_grid(const char *input, size_t width, size_t height)
       Color color = GetColor(symb == ' ' ? 0xeeeeeeff : symb == 'o' ? 0x7777ffff : 0x222222ff);
       const Rectangle rect = {float(x), float(y), 1.f, 1.f};
       DrawRectangleRec(rect, color);
-      //DrawPixel(int(x), int(y), color);
     }
 }
 
@@ -50,12 +48,11 @@ static std::vector<Position> reconstruct_path(std::vector<Position> prev, Positi
   return res;
 }
 
-float heuristic(Position lhs, Position rhs)
-{
-  return sqrtf(square(float(lhs.x - rhs.x)) + square(float(lhs.y - rhs.y)));
-};
+float heuristic(Position lhs, Position rhs) { return sqrtf(square(float(lhs.x - rhs.x)) + square(float(lhs.y - rhs.y))); };
 
-static float ida_star_search(const char *input, size_t width, size_t height, std::vector<Position> &path, const float g, const float bound, Position to)
+/*
+static float ida_star_search(const char *input, size_t width, size_t height, std::vector<Position> &path, const float g, const float
+bound, Position to)
 {
   const Position &p = path.back();
   const float f = g + heuristic(p, to);
@@ -113,6 +110,7 @@ static std::vector<Position> find_ida_star_path(const char *input, size_t width,
   }
   return {};
 }
+*/
 
 static std::vector<Position> find_path_a_star(const char *input, size_t width, size_t height, Position from, Position to, float weight)
 {
@@ -122,7 +120,7 @@ static std::vector<Position> find_path_a_star(const char *input, size_t width, s
 
   std::vector<float> g(inpSize, std::numeric_limits<float>::max());
   std::vector<float> f(inpSize, std::numeric_limits<float>::max());
-  std::vector<Position> prev(inpSize, {-1,-1});
+  std::vector<Position> prev(inpSize, {-1, -1});
 
   auto getG = [&](Position p) -> float { return g[coord_to_idx(p.x, p.y, width)]; };
   auto getF = [&](Position p) -> float { return f[coord_to_idx(p.x, p.y, width)]; };
@@ -156,8 +154,7 @@ static std::vector<Position> find_path_a_star(const char *input, size_t width, s
     const Rectangle rect = {float(curPos.x), float(curPos.y), 1.f, 1.f};
     DrawRectangleRec(rect, Color{uint8_t(g[idx]), uint8_t(g[idx]), 0, 100});
     closedList.emplace_back(curPos);
-    auto checkNeighbour = [&](Position p)
-    {
+    auto checkNeighbour = [&](Position p) {
       // out of bounds
       if (p.x < 0 || p.y < 0 || p.x >= int(width) || p.y >= int(height))
         return;
@@ -190,7 +187,6 @@ void draw_nav_data(const char *input, size_t width, size_t height, Position from
 {
   draw_nav_grid(input, width, height);
   std::vector<Position> path = find_path_a_star(input, width, height, from, to, weight);
-  //std::vector<Position> path = find_ida_star_path(input, width, height, from, to);
   draw_path(path);
 }
 
@@ -219,11 +215,10 @@ int main(int /*argc*/, const char ** /*argv*/)
   Position from = dungeon::find_walkable_tile(navGrid, dungWidth, dungHeight);
   Position to = dungeon::find_walkable_tile(navGrid, dungWidth, dungHeight);
 
-  Camera2D camera = { {0, 0}, {0, 0}, 0.f, 1.f };
-  //camera.offset = Vector2{ width * 0.5f, height * 0.5f };
+  Camera2D camera = {{0, 0}, {0, 0}, 0.f, 1.f};
   camera.zoom = float(height) / float(dungHeight);
 
-  SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
+  SetTargetFPS(60); // Set our game to run at 60 frames-per-second
   while (!WindowShouldClose())
   {
     // pick pos
@@ -263,10 +258,10 @@ int main(int /*argc*/, const char ** /*argv*/)
       printf("new weight %f\n", weight);
     }
     BeginDrawing();
-      ClearBackground(BLACK);
-      BeginMode2D(camera);
-        draw_nav_data(navGrid, dungWidth, dungHeight, from, to, weight);
-      EndMode2D();
+    ClearBackground(BLACK);
+    BeginMode2D(camera);
+    draw_nav_data(navGrid, dungWidth, dungHeight, from, to, weight);
+    EndMode2D();
     EndDrawing();
   }
   CloseWindow();
