@@ -16,7 +16,7 @@ Position gen_random_dir()
 }
 
 void gen_drunk_dungeon(char *tiles, const size_t w, const size_t h,
-                       const size_t num_iter, const size_t max_excavations)
+                       const size_t num_iter, const size_t max_excavations, bool draw)
 {
   memset(tiles, dungeon::wall, w * h);
 
@@ -89,8 +89,11 @@ void gen_drunk_dungeon(char *tiles, const size_t w, const size_t h,
     }
   }
 
-  for (size_t y = 0; y < h; ++y)
-    printf("%.*s\n", int(w), tiles + y * w);
+  if (draw)
+  {
+    for (size_t y = 0; y < h; ++y)
+      printf("%.*s\n", int(w), tiles + y * w);
+  }
 }
 
 void spill_drunk_water(char *tiles, const size_t w, const size_t h,

@@ -1,5 +1,7 @@
 #include "raylib.h"
+#include <cstring>
 #include <ios>
+#include <stdio.h>
 #include <vector>
 #include <limits>
 #include <float.h>
@@ -329,7 +331,47 @@ void draw_nav_data(const char *input, size_t width, size_t height, Position from
   draw_path(path);
 }
 
-int main(int /*argc*/, const char ** /*argv*/)
+std::vector<float> choose_best_weights(size_t width, size_t height, AlgoStar algo, int nmaps, const std::vector<float> &ws,
+  const std::vector<float> &percs)
+{
+  char *navGrid = new char[width * height];
+
+  auto findPath = [&](Position from, Position to, float weight) {
+    switch (algo)
+    {
+      case AlgoStar::WA: return find_path_wa_star(navGrid, width, height, from, to, weight); break;
+      case AlgoStar::AWA: return find_path_awa_star(navGrid, width, height, from, to, weight); break;
+    }
+  };
+
+  std::vector<float> freqs(ws.size(), 0.f);
+  for (int imap = 0; imap < nmaps; ++imap) {
+    gen_drunk_dungeon(navGrid, width, height, 24, 100, false);
+    spill_drunk_water(navGrid, width, height, 8, 10);
+    Position from = dungeon::find_walkable_tile(navGrid, width, height);
+    Position to = dungeon::find_walkable_tile(navGrid, width, height);
+
+    std::vector<Position> basePath = findPath(from, to, 1.f);
+
+    for (size_t i = 0; i < ws.size(); ++i) {
+      std::vector<Position> path = findPath(from, to, ws[i]);
+      if (path == basePath)
+        freqs[i] += 1.f / float(nmaps);
+    }
+  }
+
+  std::vector<float> bestWs(percs.size(), 1.f);
+  for (size_t i = 0; i < ws.size(); ++i) {
+    for (size_t j = 0; j < percs.size(); ++j) {
+      if (freqs[i] >= percs[j] && ws[i] > bestWs[j])
+        bestWs[j] = ws[i];
+    }
+  }
+
+  return bestWs;
+}
+
+int main()
 {
   int width = 1920;
   int height = 1080;
@@ -346,6 +388,7 @@ int main(int /*argc*/, const char ** /*argv*/)
 
   constexpr size_t dungWidth = 100;
   constexpr size_t dungHeight = 100;
+
   char *navGrid = new char[dungWidth * dungHeight];
   gen_drunk_dungeon(navGrid, dungWidth, dungHeight, 24, 100);
   spill_drunk_water(navGrid, dungWidth, dungHeight, 8, 10);
@@ -356,6 +399,15 @@ int main(int /*argc*/, const char ** /*argv*/)
 
   Camera2D camera = {{0, 0}, {0, 0}, 0.f, 1.f};
   camera.zoom = float(height) / float(dungHeight);
+
+  std::vector<float> ws{};
+  for (int i = 0; i < 20; ++i)
+    ws.push_back(float(1.1f + 0.1f * float(i)));
+  std::vector<float> percs = {0.99f, 0.95f, 0.9f, 0.75f};
+
+  auto bestWs = choose_best_weights(dungWidth, dungHeight, AlgoStar::WA, 20, ws, percs);
+  for (size_t i = 0; i < percs.size(); ++i)
+    printf("Best weight for %fth percentile = %f\n", percs[i] * 1e2, bestWs[i]);
 
   SetTargetFPS(60); // Set our game to run at 60 frames-per-second
   while (!WindowShouldClose())
