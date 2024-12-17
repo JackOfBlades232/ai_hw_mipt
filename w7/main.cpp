@@ -63,7 +63,13 @@ int main(int /*argc*/, const char ** /*argv*/)
     BeginDrawing();
     {
       ClearBackground(BLACK);
-      cameraQuery.each([&](Camera2D &cam) { BeginMode2D(cam); });
+      cameraQuery.each([&](Camera2D &cam) {
+        BeginMode2D(cam);
+
+        Vector2 mousePosition = GetScreenToWorld2D(GetMousePosition(), cam);
+        if (IsMouseButtonPressed(0))
+          set_autopilot_target(ecs, mousePosition.x, mousePosition.y);
+      });
       {
         ecs.progress();
       }

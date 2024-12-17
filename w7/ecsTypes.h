@@ -173,3 +173,8 @@ struct DmapWeights
 
 struct Hive
 {};
+
+struct AutopilotTarget
+{
+  std::vector<Position> path{};
+};

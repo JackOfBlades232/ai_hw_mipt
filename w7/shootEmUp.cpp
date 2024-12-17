@@ -1,26 +1,44 @@
-#include <raylib.h>
 #include "shootEmUp.h"
 #include "ecsTypes.h"
+#include "math.h"
 #include "rlikeObjects.h"
 #include "steering.h"
-#include "dungeonGen.h"
 #include "dungeonUtils.h"
 #include "pathfinder.h"
+#include <raylib.h>
+#include <cfloat>
+#include <stdio.h>
 
 constexpr float tile_size = 64.f;
 
 static void register_roguelike_systems(flecs::world &ecs)
 {
 
-  ecs.system<Velocity, const MoveSpeed, const IsPlayer>().each([&](Velocity &vel, const MoveSpeed &ms, const IsPlayer) {
-    bool left = IsKeyDown(KEY_LEFT);
-    bool right = IsKeyDown(KEY_RIGHT);
-    bool up = IsKeyDown(KEY_UP);
-    bool down = IsKeyDown(KEY_DOWN);
-    vel.x = ((left ? -1.f : 0.f) + (right ? 1.f : 0.f));
-    vel.y = ((up ? -1.f : 0.f) + (down ? 1.f : 0.f));
-    vel = Velocity{normalize(vel) * ms.speed};
-  });
+  ecs.system<const Position, Velocity, const MoveSpeed, const IsPlayer, AutopilotTarget>().each(
+    [&](const Position &pos, Velocity &vel, const MoveSpeed &ms, const IsPlayer, AutopilotTarget &tgt) {
+      velocity_selection:
+        if (!tgt.path.empty())
+        {
+          Position tpos = tgt.path.front();
+          tpos.x *= tile_size;
+          tpos.y *= tile_size;
+          if (dist(pos, tpos) < FLT_EPSILON)
+          {
+            tgt.path.erase(tgt.path.begin());
+            goto velocity_selection;
+          }
+          Velocity toVel = {tpos.x - pos.x, tpos.y - pos.y};
+          vel = Velocity{normalize(toVel) * ms.speed};
+          toVel.x /= ecs.delta_time();
+          toVel.y /= ecs.delta_time();
+
+          vel.x = toVel.x >= 0.f ? std::min(vel.x, toVel.x) : std::max(vel.x, toVel.x);
+          vel.y = toVel.y >= 0.f ? std::min(vel.y, toVel.y) : std::max(vel.y, toVel.y);
+        }
+        else
+          vel = {0, 0};
+    });
+
   ecs.system<Position, const Velocity>().each([&](Position &pos, const Velocity &vel) { pos += vel * ecs.delta_time(); });
   ecs.system<const Position, const Color>()
     .with<TextureSource>(flecs::Wildcard)
@@ -109,6 +127,19 @@ static void register_roguelike_systems(flecs::world &ecs)
         }
       }
     });
+
+    for (size_t i = 1; i < dp.portalsToHighlight.size(); ++i)
+    {
+      const PathPortal &src = dp.portals[dp.portalsToHighlight[i - 1]];
+      const PathPortal &dst = dp.portals[dp.portalsToHighlight[i]];
+      Rectangle srcRect{src.startX * tile_size, src.startY * tile_size, (src.endX - src.startX + 1) * tile_size,
+        (src.endY - src.startY + 1) * tile_size};
+      Rectangle dstRect{dst.startX * tile_size, dst.startY * tile_size, (dst.endX - dst.startX + 1) * tile_size,
+        (dst.endY - dst.startY + 1) * tile_size};
+      Vector2 srcCenter{srcRect.x + srcRect.width * 0.5f, srcRect.y + srcRect.height * 0.5f};
+      Vector2 dstCenter{dstRect.x + dstRect.width * 0.5f, dstRect.y + dstRect.height * 0.5f};
+      DrawLineEx(srcCenter, dstCenter, 5.f, RED);
+    }
   });
   steer::register_systems(ecs);
 }
@@ -151,4 +182,31 @@ void init_dungeon(flecs::world &ecs, char *tiles, size_t w, size_t h)
   prebuild_map(ecs);
 }
 
-void process_game(flecs::world &ecs) {}
+void process_game(flecs::world &) {}
+
+void set_autopilot_target(flecs::world &ecs, float x, float y)
+{
+  auto playerQuery = ecs.query<AutopilotTarget, const Position>();
+  auto dpQuery = ecs.query<DungeonPortals>();
+  auto ddQuery = ecs.query<const DungeonData>();
+
+  printf("Mouse pressed: (%f, %f)\n", x, y);
+
+  Position tiledDest = {x / tile_size, y / tile_size};
+
+  bool wall = false;
+  ddQuery.each([&](const DungeonData &dd) {
+    size_t tileId = coord_to_idx(tiledDest.x, tiledDest.y, dd.width);
+    wall = tileId >= dd.width * dd.height || dd.tiles[tileId] == dungeon::wall;
+  });
+
+  if (wall)
+    return;
+
+  playerQuery.each([&](AutopilotTarget &tgt, const Position &pos) {
+    Position tiledPos = {pos.x / tile_size, pos.y / tile_size};
+    auto [path, portals] = construct_path_hierarchical(ecs, tiledPos, tiledDest);
+    tgt.path = std::move(path);
+    dpQuery.each([&](DungeonPortals &dp) { dp.portalsToHighlight = std::move(portals); });
+  });
+}

@@ -32,5 +32,6 @@ void create_player(flecs::world &ecs, Position pos, const char *texture_src)
     .set(NumActions{2, 0})
     .set(Color{255, 255, 255, 255})
     .add<TextureSource>(textureSrc)
-    .set(MeleeDamage{50.f});
+    .set(MeleeDamage{50.f})
+    .set(AutopilotTarget{});
 }
