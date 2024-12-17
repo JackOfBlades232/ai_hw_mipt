@@ -34,4 +34,3 @@ void create_player(flecs::world &ecs, Position pos, const char *texture_src)
     .add<TextureSource>(textureSrc)
     .set(MeleeDamage{50.f});
 }
-

@@ -23,4 +23,3 @@ struct DungeonPortals
 };
 
 void prebuild_map(flecs::world &ecs);
-

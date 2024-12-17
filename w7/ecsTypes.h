@@ -12,19 +12,15 @@ struct Position
   float y = 0;
 };
 
-struct Velocity : public Position {};
+struct Velocity : public Position
+{};
 
-struct SteerDir : public Position {};
+struct SteerDir : public Position
+{};
 
-inline Position operator-(const Position &lhs, const Position &rhs)
-{
-  return Position{lhs.x - rhs.x, lhs.y - rhs.y};
-}
+inline Position operator-(const Position &lhs, const Position &rhs) { return Position{lhs.x - rhs.x, lhs.y - rhs.y}; }
 
-inline Position operator+(const Position &lhs, const Position &rhs)
-{
-  return {lhs.x + rhs.x, lhs.y + rhs.y};
-}
+inline Position operator+(const Position &lhs, const Position &rhs) { return {lhs.x + rhs.x, lhs.y + rhs.y}; }
 
 inline Position &operator+=(Position &lhs, const Position &rhs)
 {
@@ -32,25 +28,13 @@ inline Position &operator+=(Position &lhs, const Position &rhs)
   return lhs;
 }
 
-inline Position operator*(const Position &lhs, const float scalar)
-{
-  return {lhs.x * scalar, lhs.y * scalar};
-}
+inline Position operator*(const Position &lhs, const float scalar) { return {lhs.x * scalar, lhs.y * scalar}; }
 
-inline float safeinv(float v)
-{
-  return fabsf(v) > 1e-7f ? 1.f / v : v;
-}
+inline float safeinv(float v) { return fabsf(v) > 1e-7f ? 1.f / v : v; }
 
-inline float length_sq(const Position &v)
-{
-  return v.x * v.x + v.y * v.y;
-}
+inline float length_sq(const Position &v) { return v.x * v.x + v.y * v.y; }
 
-inline float length(const Position &v)
-{
-  return sqrtf(length_sq(v));
-}
+inline float length(const Position &v) { return sqrtf(length_sq(v)); }
 
 inline Position normalize(const Position &v)
 {
@@ -134,16 +118,19 @@ struct Symbol
   char symb;
 };
 
-struct IsPlayer {};
+struct IsPlayer
+{};
 
-struct WorldInfoGatherer {};
+struct WorldInfoGatherer
+{};
 
 struct Team
 {
   int team = 0;
 };
 
-struct TextureSource {};
+struct TextureSource
+{};
 
 struct TurnCounter
 {
@@ -156,7 +143,8 @@ struct ActionLog
   size_t capacity = 5;
 };
 
-struct BackgroundTile {};
+struct BackgroundTile
+{};
 
 struct DungeonData
 {
@@ -170,7 +158,8 @@ struct DijkstraMapData
   std::vector<float> map;
 };
 
-struct VisualiseMap {};
+struct VisualiseMap
+{};
 
 struct DmapWeights
 {
@@ -182,4 +171,5 @@ struct DmapWeights
   std::unordered_map<std::string, WtData> weights;
 };
 
-struct Hive {};
+struct Hive
+{};

@@ -1,19 +1,15 @@
 #include "dungeonGen.h"
 #include "dungeonUtils.h"
 #include <cstring> // memset
-#include <cstdio> // printf
+#include <cstdio>  // printf
 #include <random>
-#include <chrono> // std::chrono
+#include <chrono>     // std::chrono
 #include <functional> // std::bind
-#include "ecsTypes.h"
 #include "math.h"
 #include <limits>
 
 void gen_drunk_dungeon(char *tiles, size_t w, size_t h)
 {
-  //constexpr char wall = '#';
-  //constexpr char flr = ' ';
-
   memset(tiles, dungeon::wall, w * h);
 
   // generator
@@ -24,8 +20,8 @@ void gen_drunk_dungeon(char *tiles, size_t w, size_t h)
   std::default_random_engine dirGenerator(seedGenerator());
 
   // distributions
-  std::uniform_int_distribution<size_t> widthDist(1, w-2);
-  std::uniform_int_distribution<size_t> heightDist(1, h-2);
+  std::uniform_int_distribution<size_t> widthDist(1, w - 2);
+  std::uniform_int_distribution<size_t> heightDist(1, h - 2);
   std::uniform_int_distribution<size_t> dirDist(0, 3);
   auto rndWd = std::bind(widthDist, widthGenerator);
   auto rndHt = std::bind(heightDist, heightGenerator);
@@ -61,13 +57,13 @@ void gen_drunk_dungeon(char *tiles, size_t w, size_t h)
 
   // construct a path from start pos to all other start poses
   // construct a path from start pos to all other start poses
-  for (size_t i = 0; i < startPos.size()-1; ++i)
+  for (size_t i = 0; i < startPos.size() - 1; ++i)
   {
     const IVec2 &spos = startPos[i];
     float closestDistSq = std::numeric_limits<float>::max();
     IVec2 closestPos = spos;
     IVec2 lastPop = spos;
-    for (size_t j = i+1; j < startPos.size(); ++j)
+    for (size_t j = i + 1; j < startPos.size(); ++j)
     {
       const IVec2 &epos = startPos[j];
       const float distSq = dist_sq(spos, epos);
@@ -103,4 +99,3 @@ void gen_drunk_dungeon(char *tiles, size_t w, size_t h)
   for (size_t y = 0; y < h; ++y)
     printf("%.*s\n", int(w), tiles + y * w);
 }
-

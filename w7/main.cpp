@@ -11,10 +11,8 @@ static void update_camera(flecs::world &ecs)
   auto cameraQuery = ecs.query<Camera2D>();
   auto playerQuery = ecs.query<const Position, const IsPlayer>();
 
-  cameraQuery.each([&](Camera2D &cam)
-  {
-    playerQuery.each([&](const Position &pos, const IsPlayer &)
-    {
+  cameraQuery.each([&](Camera2D &cam) {
+    playerQuery.each([&](const Position &pos, const IsPlayer &) {
       cam.target.x += (pos.x - cam.target.x) * 0.1f;
       cam.target.y += (pos.y - cam.target.y) * 0.1f;
       cam.zoom *= (1.f - GetMouseWheelMove() * 0.1);
@@ -48,15 +46,14 @@ int main(int /*argc*/, const char ** /*argv*/)
   }
   init_shoot_em_up(ecs);
 
-  Camera2D camera = { {0, 0}, {0, 0}, 0.f, 1.f };
-  camera.target = Vector2{ 0.f, 0.f };
-  camera.offset = Vector2{ width * 0.5f, height * 0.5f };
+  Camera2D camera = {{0, 0}, {0, 0}, 0.f, 1.f};
+  camera.target = Vector2{0.f, 0.f};
+  camera.offset = Vector2{width * 0.5f, height * 0.5f};
   camera.rotation = 0.f;
   camera.zoom = 0.5f;
-  ecs.entity("camera")
-    .set(Camera2D{camera});
+  ecs.entity("camera").set(Camera2D{camera});
 
-  SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
+  SetTargetFPS(60); // Set our game to run at 60 frames-per-second
   while (!WindowShouldClose())
   {
     auto cameraQuery = ecs.query<Camera2D>();
@@ -64,11 +61,15 @@ int main(int /*argc*/, const char ** /*argv*/)
     update_camera(ecs);
 
     BeginDrawing();
+    {
       ClearBackground(BLACK);
       cameraQuery.each([&](Camera2D &cam) { BeginMode2D(cam); });
+      {
         ecs.progress();
+      }
       EndMode2D();
-      // Advance to next frame. Process submitted rendering primitives.
+    }
+    // Advance to next frame. Process submitted rendering primitives.
     EndDrawing();
   }
 

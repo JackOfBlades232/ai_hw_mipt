@@ -11,4 +11,3 @@ struct MonsterSpawner
   float timeToSpawn;
   float timeBetweenSpawns;
 };
-
